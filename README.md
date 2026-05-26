@@ -211,7 +211,7 @@ Quick web search using the `turbo` model. Returns only links, titles, and snippe
 
 ### `perplexity_ask`
 
-Ask Perplexity AI a question and get a comprehensive answer with source citations. By default uses the best model (Pro auto mode) when authentication tokens are provided, or `turbo` in tokenless mode. Can be configured via `PERPLEXITY_ASK_MODEL`.
+Ask Perplexity AI a question and get a comprehensive answer with source citations. By default uses the best model (Pro auto mode) when authenticated, or `turbo` in tokenless mode. Can be configured via `PERPLEXITY_ASK_MODEL`.
 
 **Best for:** Getting detailed answers to questions with web context.
 

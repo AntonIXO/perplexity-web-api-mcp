@@ -74,6 +74,10 @@ pub enum Error {
     /// CSRF token was not present in the /api/auth/csrf response.
     #[error("CSRF token missing from /api/auth/csrf response")]
     CsrfTokenMissing,
+
+    /// Both a custom HTTP client and authentication cookies were provided.
+    #[error("cannot combine custom HTTP client with authentication cookies; manage cookies on the provided client directly")]
+    CustomClientWithCookies,
 }
 
 /// Convenience Result type for this crate.

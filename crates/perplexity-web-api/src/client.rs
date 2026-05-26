@@ -66,7 +66,12 @@ impl ClientBuilder {
         let has_cookies = cookies.is_some();
 
         let http = match http_client {
-            Some(client) => client,
+            Some(client) => {
+                if cookies.is_some() {
+                    return Err(Error::CustomClientWithCookies);
+                }
+                client
+            }
             None => {
                 let jar = Arc::new(Jar::default());
                 let url = API_BASE_URL.parse().map_err(|_| Error::InvalidBaseUrl)?;
