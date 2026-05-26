@@ -83,7 +83,7 @@ impl ClientBuilder {
                     .build()
                     .map_err(Error::HttpClientInit)?;
 
-                if let Some(_) = &cookies {
+                if cookies.is_some() {
                     let csrf_token = Self::fetch_csrf_token(&http, timeout).await?;
                     let cookie = format!(
                         "{}={}; Domain=www.perplexity.ai; Path=/",
