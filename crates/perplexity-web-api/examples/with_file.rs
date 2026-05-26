@@ -26,8 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     "#;
     let file = UploadFile::from_text("rust_overview.txt", content);
 
-    let client =
-        Client::builder().cookies(AuthCookies::new(session_token)).build().await?;
+    let client = Client::builder().cookies(AuthCookies::new(session_token)).build().await?;
 
     let response = client
         .search(

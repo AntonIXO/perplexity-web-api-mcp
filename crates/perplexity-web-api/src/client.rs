@@ -73,8 +73,7 @@ impl ClientBuilder {
 
                 if let Some(auth) = &cookies {
                     let (name, value) = auth.session_cookie_pair();
-                    let cookie =
-                        format!("{name}={value}; Domain=www.perplexity.ai; Path=/");
+                    let cookie = format!("{name}={value}; Domain=www.perplexity.ai; Path=/");
                     jar.add_cookie_str(&cookie, &url);
                 }
 
@@ -109,9 +108,7 @@ impl ClientBuilder {
 
     /// Fetches the CSRF token from `/api/auth/csrf`.
     async fn fetch_csrf_token(http: &HttpClient, timeout: Duration) -> Result<String> {
-        let fut = http
-            .get(format!("{}{}", API_BASE_URL, ENDPOINT_AUTH_CSRF))
-            .send();
+        let fut = http.get(format!("{}{}", API_BASE_URL, ENDPOINT_AUTH_CSRF)).send();
         let response = tokio::time::timeout(timeout, fut)
             .await
             .map_err(|_| Error::Timeout(timeout))?
