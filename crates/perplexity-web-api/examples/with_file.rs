@@ -7,10 +7,9 @@ use perplexity_web_api::{AuthCookies, Client, SearchMode, SearchRequest, UploadF
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session_token = std::env::var("PERPLEXITY_SESSION_TOKEN").ok();
-    let csrf_token = std::env::var("PERPLEXITY_CSRF_TOKEN").ok();
 
-    let (Some(session_token), Some(csrf_token)) = (session_token, csrf_token) else {
-        println!("No tokens provided, exiting.");
+    let Some(session_token) = session_token else {
+        println!("No session token provided, exiting.");
         return Ok(());
     };
 
@@ -28,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = UploadFile::from_text("rust_overview.txt", content);
 
     let client =
-        Client::builder().cookies(AuthCookies::new(session_token, csrf_token)).build().await?;
+        Client::builder().cookies(AuthCookies::new(session_token)).build().await?;
 
     let response = client
         .search(

@@ -66,6 +66,14 @@ pub enum Error {
 
     #[error("Invalid API base url")]
     InvalidBaseUrl,
+
+    /// Failed to fetch CSRF token from /api/auth/csrf.
+    #[error("Failed to fetch CSRF token: {0}")]
+    CsrfFetch(#[source] rquest::Error),
+
+    /// CSRF token was not present in the /api/auth/csrf response.
+    #[error("CSRF token missing from /api/auth/csrf response")]
+    CsrfTokenMissing,
 }
 
 /// Convenience Result type for this crate.

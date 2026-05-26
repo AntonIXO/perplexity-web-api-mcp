@@ -106,27 +106,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let session_token = optional_env("PERPLEXITY_SESSION_TOKEN")?;
-    let csrf_token = optional_env("PERPLEXITY_CSRF_TOKEN")?;
-    let tokenless = session_token.is_none() || csrf_token.is_none();
+    let tokenless = session_token.is_none();
     let incognito = optional_bool_env("PERPLEXITY_INCOGNITO", true)?;
 
     let (default_ask_model, default_reason_model) = if tokenless {
         // In tokenless mode, model overrides are not supported.
         if env::var("PERPLEXITY_ASK_MODEL").is_ok() {
             return Err(std::io::Error::other(
-                "PERPLEXITY_ASK_MODEL cannot be used without authentication tokens.\n\n\
-                 To use model configuration, provide both:\n\
-                   PERPLEXITY_SESSION_TOKEN  - Perplexity session token\n\
-                   PERPLEXITY_CSRF_TOKEN     - Perplexity CSRF token",
+                "PERPLEXITY_ASK_MODEL cannot be used without authentication.\n\n\
+                 To use model configuration, provide:\n\
+                   PERPLEXITY_SESSION_TOKEN  - Perplexity session token",
             )
             .into());
         }
         if env::var("PERPLEXITY_REASON_MODEL").is_ok() {
             return Err(std::io::Error::other(
-                "PERPLEXITY_REASON_MODEL cannot be used without authentication tokens.\n\n\
-                 To use model configuration, provide both:\n\
-                   PERPLEXITY_SESSION_TOKEN  - Perplexity session token\n\
-                   PERPLEXITY_CSRF_TOKEN     - Perplexity CSRF token",
+                "PERPLEXITY_REASON_MODEL cannot be used without authentication.\n\n\
+                 To use model configuration, provide:\n\
+                   PERPLEXITY_SESSION_TOKEN  - Perplexity session token",
             )
             .into());
         }
@@ -152,8 +149,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let mut builder = Client::builder();
-    if let (Some(session), Some(csrf)) = (session_token, csrf_token) {
-        builder = builder.cookies(AuthCookies::new(session, csrf));
+    if let Some(session) = session_token {
+        builder = builder.cookies(AuthCookies::new(session));
     }
 
     let client = builder.build().await.map_err(|e| {

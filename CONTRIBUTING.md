@@ -183,7 +183,6 @@ Examples require authentication tokens. Set environment variables:
 
 ```bash
 export PERPLEXITY_SESSION_TOKEN="your-session-token"
-export PERPLEXITY_CSRF_TOKEN="your-csrf-token"
 ```
 
 Then run:

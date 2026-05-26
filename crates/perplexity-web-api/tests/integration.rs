@@ -2,7 +2,6 @@ use perplexity_web_api::{AuthCookies, Client, SearchMode, SearchRequest, SearchR
 use std::time::Duration;
 
 const SESSION_TOKEN_ENV: &str = "PERPLEXITY_SESSION_TOKEN";
-const CSRF_TOKEN_ENV: &str = "PERPLEXITY_CSRF_TOKEN";
 
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(60);
 const RESEARCH_TIMEOUT: Duration = Duration::from_secs(300);
@@ -17,25 +16,21 @@ fn require_env(name: &str) -> String {
     std::env::var(name).ok().filter(|value| !value.trim().is_empty()).unwrap_or_else(|| {
         panic!(
             "Required environment variable `{name}` is not set.\n\n\
-                 Integration tests require both variables:\n\
-                   - {SESSION_TOKEN_ENV}\n\
-                   - {CSRF_TOKEN_ENV}\n\n\
+                 Integration tests require:\n\
+                   - {SESSION_TOKEN_ENV}\n\n\
                  Usage:\n\
-                   {SESSION_TOKEN_ENV}=<token> {CSRF_TOKEN_ENV}=<token> make test-integration"
+                   {SESSION_TOKEN_ENV}=<token> make test-integration"
         )
     })
 }
 
 fn ensure_required_env_vars() {
     let _ = require_env(SESSION_TOKEN_ENV);
-    let _ = require_env(CSRF_TOKEN_ENV);
 }
 
 fn auth_cookies() -> AuthCookies {
     let session_token = require_env(SESSION_TOKEN_ENV);
-    let csrf_token = require_env(CSRF_TOKEN_ENV);
-
-    AuthCookies::new(session_token, csrf_token)
+    AuthCookies::new(session_token)
 }
 
 fn assert_response_has_answer(response: &SearchResponse, context: &str) {

@@ -51,13 +51,13 @@
 //!
 //! # Authentication
 //!
-//! For enhanced features (pro mode, file uploads), provide your Perplexity cookies:
+//! For enhanced features (pro mode, file uploads), provide your Perplexity session token:
 //!
 //! ```no_run
 //! use perplexity_web_api::{AuthCookies, Client};
 //!
 //! # async fn example() -> perplexity_web_api::Result<()> {
-//! let cookies = AuthCookies::new("your-session", "your-token");
+//! let cookies = AuthCookies::new("your-session-token");
 //!
 //! let client = Client::builder()
 //!     .cookies(cookies)

@@ -1,7 +1,7 @@
 use crate::auth::AuthCookies;
 use crate::config::{
-    API_BASE_URL, API_MODE_CONCISE, API_MODE_COPILOT, API_VERSION, ENDPOINT_AUTH_SESSION,
-    ENDPOINT_SSE_ASK,
+    API_BASE_URL, API_MODE_CONCISE, API_MODE_COPILOT, API_VERSION, CSRF_TOKEN_COOKIE_NAME,
+    ENDPOINT_AUTH_CSRF, ENDPOINT_AUTH_SESSION, ENDPOINT_SSE_ASK,
 };
 use crate::error::{Error, Result};
 use crate::sse::SseStream;
@@ -59,8 +59,8 @@ impl ClientBuilder {
 
     /// Builds the client and performs initial session warm-up.
     ///
-    /// This mirrors the Python client's behavior of making an initial
-    /// GET request to `/api/auth/session` to establish a session.
+    /// When authentication cookies are provided, the CSRF token is fetched
+    /// dynamically from `/api/auth/csrf` before the session warm-up.
     pub async fn build(self) -> Result<Client> {
         let Self { cookies, http_client, timeout } = self;
         let has_cookies = cookies.is_some();
@@ -71,19 +71,29 @@ impl ClientBuilder {
                 let jar = Arc::new(Jar::default());
                 let url = API_BASE_URL.parse().map_err(|_| Error::InvalidBaseUrl)?;
 
-                if let Some(auth_cookies) = &cookies {
-                    for (name, value) in auth_cookies.as_pairs() {
-                        let cookie =
-                            format!("{name}={value}; Domain=www.perplexity.ai; Path=/");
-                        jar.add_cookie_str(&cookie, &url);
-                    }
+                if let Some(auth) = &cookies {
+                    let (name, value) = auth.session_cookie_pair();
+                    let cookie =
+                        format!("{name}={value}; Domain=www.perplexity.ai; Path=/");
+                    jar.add_cookie_str(&cookie, &url);
                 }
 
-                HttpClient::builder()
+                let http = HttpClient::builder()
                     .emulation(Emulation::Chrome136)
-                    .cookie_provider(jar)
+                    .cookie_provider(jar.clone())
                     .build()
-                    .map_err(Error::HttpClientInit)?
+                    .map_err(Error::HttpClientInit)?;
+
+                if let Some(_) = &cookies {
+                    let csrf_token = Self::fetch_csrf_token(&http, timeout).await?;
+                    let cookie = format!(
+                        "{}={}; Domain=www.perplexity.ai; Path=/",
+                        CSRF_TOKEN_COOKIE_NAME, csrf_token
+                    );
+                    jar.add_cookie_str(&cookie, &url);
+                }
+
+                http
             }
         };
 
@@ -95,6 +105,24 @@ impl ClientBuilder {
             .map_err(Error::SessionWarmup)?;
 
         Ok(Client { http, has_cookies, timeout })
+    }
+
+    /// Fetches the CSRF token from `/api/auth/csrf`.
+    async fn fetch_csrf_token(http: &HttpClient, timeout: Duration) -> Result<String> {
+        let fut = http
+            .get(format!("{}{}", API_BASE_URL, ENDPOINT_AUTH_CSRF))
+            .send();
+        let response = tokio::time::timeout(timeout, fut)
+            .await
+            .map_err(|_| Error::Timeout(timeout))?
+            .map_err(Error::CsrfFetch)?;
+
+        let body: serde_json::Value = response.json().await.map_err(Error::CsrfFetch)?;
+
+        body.get("csrfToken")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_owned())
+            .ok_or(Error::CsrfTokenMissing)
     }
 }
 
