@@ -71,7 +71,7 @@ pub struct PerplexityRequest {
     pub language: Option<String>,
 
     /// Optional file attachments for document analysis.
-    /// Requires authentication tokens (PERPLEXITY_SESSION_TOKEN + PERPLEXITY_CSRF_TOKEN).
+    /// Requires authentication token (PERPLEXITY_SESSION_TOKEN).
     /// Each entry needs `filename` and either `text` (plain text) or `data` (base64 binary).
     #[serde(default)]
     pub files: Option<Vec<FileAttachment>>,
@@ -205,8 +205,8 @@ impl PerplexityServer {
                 }
                 if self.tokenless {
                     return Err(McpError::invalid_params(
-                        "File attachments require authentication tokens. \
-                         Set PERPLEXITY_SESSION_TOKEN and PERPLEXITY_CSRF_TOKEN.",
+                        "File attachments require authentication. \
+                         Set PERPLEXITY_SESSION_TOKEN.",
                         None,
                     ));
                 }
