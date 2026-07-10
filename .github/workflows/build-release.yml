@@ -30,15 +30,22 @@ jobs:
   build:
     name: build (${{ matrix.target }})
     strategy:
+      # Don't cancel siblings on first failure — partial releases are still
+      # useful, and one flaky runner (esp. free macOS Intel) should not block
+      # the whole release.
       fail-fast: false
+      # A single broken target must not block the release. The release job
+      # filters out missing artifacts and uploads whatever did build.
+      continue-on-error: true
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
-          - target: x86_64-apple-darwin
-            os: macos-13
+          # macOS: ship arm64 only. New Macs are all Apple Silicon, and Intel
+          # Macs can run arm64 binaries via Rosetta 2. Dropping x86_64-apple-
+          # darwin also sidesteps the chronically-queued `macos-13` runner.
           - target: aarch64-apple-darwin
             os: macos-latest
           - target: x86_64-pc-windows-msvc
@@ -101,11 +108,17 @@ jobs:
           path: |
             perplexity-web-api-mcp-${{ matrix.target }}.tar.gz*
             perplexity-web-api-mcp-${{ matrix.target }}.zip*
-          if-no-files-found: error
+          # If a target failed, the artifact is missing — let the upload
+          # silently skip rather than failing this already-allowed-to-fail
+          # job again with a confusing error.
+          if-no-files-found: ignore
 
   release:
     name: Create GitHub Release
     needs: build
+    # `needs: build` with default behaviour makes the release run only if ALL
+    # builds succeed. We want it to run on partial success too.
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,6 +129,8 @@ jobs:
           pattern: dist-*
           path: dist
           merge-multiple: true
+          # Some targets may have failed and not uploaded — don't error.
+          fail-on-unmatched-globs: false
 
       - name: Resolve release tag
         id: tag
@@ -132,7 +147,20 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Guard - skip release if no builds succeeded
+        id: guard
+        shell: bash
+        run: |
+          if [ -z "$(ls -A dist 2>/dev/null)" ]; then
+            echo "::warning::No build artifacts were produced — every target failed. Skipping release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Artifacts: $(ls -la dist/ | tail -n +2 | wc -l) file(s)"
+          fi
+
       - name: Create / update release
+        if: steps.guard.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
@@ -140,4 +168,6 @@ jobs:
           prerelease: ${{ steps.tag.outputs.prerelease }}
           generate_release_notes: true
           files: dist/*
+          # We just verified the dir isn't empty, so missing files are an
+          # unexpected glob mismatch — error.
           fail_on_unmatched_files: true
