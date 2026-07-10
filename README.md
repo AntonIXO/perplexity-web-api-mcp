@@ -1,10 +1,10 @@
 # Perplexity Web API MCP Server
 
 <p>
-    <a href="https://cursor.com/en/install-mcp?name=perplexity-web&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInBlcnBsZXhpdHktd2ViLWFwaS1tY3AiXSwiZW52Ijp7IlBFUlBMRVhJVFlfU0VTU0lPTl9UT0tFTiI6IiIsIlBFUlBMRVhJVFlfQ1NSRl9UT0tFTiI6IiJ9fQ==" target="_blank">
+    <a href="https://cursor.com/en/install-mcp?name=perplexity-web&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInBlcnBsZXhpdHktd2ViLWFwaS1tY3AiXSwiZW52Ijp7IlBFUlBMRVhJVFlfU0VTU0lPTl9UT0tFTiI6IiJ9fQ==" target="_blank">
         <img src="https://custom-icon-badges.demolab.com/badge/Install_in_Cursor-000000?style=for-the-badge&logo=cursor-ai-white" alt="Install in Cursor">
     </a>
-    <a href="https://vscode.dev/redirect/mcp/install?name=perplexity-web&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22perplexity-web-api-mcp%22%5D%2C%22env%22%3A%7B%22PERPLEXITY_SESSION_TOKEN%22%3A%22%22%2C%22PERPLEXITY_CSRF_TOKEN%22%3A%22%22%7D%7D" target="_blank">
+    <a href="https://vscode.dev/redirect/mcp/install?name=perplexity-web&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22perplexity-web-api-mcp%22%5D%2C%22env%22%3A%7B%22PERPLEXITY_SESSION_TOKEN%22%3A%22%22%7D%7D" target="_blank">
         <img src="https://custom-icon-badges.demolab.com/badge/Install_in_VS_Code-007ACC?style=for-the-badge&logo=vsc&logoColor=white" alt="Install in VS Code">
     </a>
     <a href="https://www.npmjs.com/package/perplexity-web-api-mcp" target="_blank">
@@ -22,7 +22,7 @@ This MCP server uses your Perplexity account session directly — **no API key n
 
 Perplexity offers a separate [paid API](https://docs.perplexity.ai/guides/pricing) with per-request pricing that is charged independently from your Pro subscription. With this MCP, you don't need to pay for API access — your existing Perplexity subscription (or even a free account) is enough.
 
-Simply extract the session tokens from your browser cookies, and you're ready to use Perplexity search, research, and reasoning in your IDE.
+Simply extract the session token from your browser cookies, and you're ready to use Perplexity search, research, and reasoning in your IDE.
 
 ## Tokenless Mode
 
@@ -32,9 +32,9 @@ The server can run **without any authentication tokens**. In this mode:
 - Both tools use the `turbo` model; `PERPLEXITY_ASK_MODEL` and `PERPLEXITY_REASON_MODEL` cannot be set (the server will throw an error if they are).
 - File attachments (`files` parameter) are unavailable — they require tokens.
 
-To use tokenless mode, simply omit `PERPLEXITY_SESSION_TOKEN` and `PERPLEXITY_CSRF_TOKEN` from your configuration.
+To use tokenless mode, simply omit `PERPLEXITY_SESSION_TOKEN` from your configuration.
 
-For full access to all tools and model selection, provide both tokens as described in the [Configuration](#configuration) section below.
+For full access to all tools and model selection, provide your session token as described in the [Configuration](#configuration) section below.
 
 ## Requirements
 
@@ -46,41 +46,34 @@ For full access to all tools and model selection, provide both tokens as describ
 
 ## Configuration
 
-### Getting Your Tokens
+### Getting Your Token
 
-This server requires a Perplexity AI account. You need to extract two authentication tokens from your browser cookies:
+This server requires a Perplexity AI account. You need to extract the session token from your browser cookies:
 
 1. Log in to [perplexity.ai](https://www.perplexity.ai) in your browser
 2. Open Developer Tools (F12 or right-click → Inspect)
 3. Go to Application → Cookies → `https://www.perplexity.ai`
-4. Copy the values of:
-   - `__Secure-next-auth.session-token` → use as `PERPLEXITY_SESSION_TOKEN`
-   - `next-auth.csrf-token` → use as `PERPLEXITY_CSRF_TOKEN`
+4. Copy the value of `__Secure-next-auth.session-token` → use as `PERPLEXITY_SESSION_TOKEN`
 
 ### Environment Variables
 
-- `PERPLEXITY_SESSION_TOKEN` (optional): Perplexity session token (`next-auth.session-token` cookie). Required for `perplexity_research`, `perplexity_reason`, and file attachments.
-- `PERPLEXITY_CSRF_TOKEN` (optional): Perplexity CSRF token (`next-auth.csrf-token` cookie). Required for `perplexity_research`, `perplexity_reason`, and file attachments.
-- `PERPLEXITY_ASK_MODEL` (optional, requires tokens): Model for `perplexity_ask`.
-  Valid values:
-    - `turbo` (default for tokenless)
-    - `pro-auto` (default for authenticated)
-    - `sonar`
-    - `gpt-5.4`
-    - `claude-4.6-sonnet`
-    - `nemotron-3-super`
-- `PERPLEXITY_REASON_MODEL` (optional, requires tokens): Model for `perplexity_reason`.
-  Valid values:
-    - `gemini-3.1-pro` (default)
-    - `gpt-5.4-thinking`
-    - `claude-4.6-sonnet-thinking`
+- `PERPLEXITY_SESSION_TOKEN` (optional): Perplexity session token (`__Secure-next-auth.session-token` cookie). Required for `perplexity_research`, `perplexity_reason`, `perplexity_computer`, and file attachments. The CSRF token is fetched automatically — no `PERPLEXITY_CSRF_TOKEN` needed.
+- `PERPLEXITY_ASK_MODEL` (optional, requires token): Model for `perplexity_ask`.
+  Valid values: `turbo`, `pro-auto` (default), `pro-upgraded`, `sonar`, `nemotron-3-super`, `claude-4.6-sonnet`, `claude-4.6-opus`, `gemini-3.0-flash`, `gemini-3.0-pro`, `gpt-5-pro`, `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.2`, `gpt-5.2-pro`, `grok-4.1`.
+- `PERPLEXITY_REASON_MODEL` (optional, requires token): Model for `perplexity_reason`.
+  Valid values: `gemini-3.1-pro` (default), `gemini-3.0-flash-high`, `claude-4.6-sonnet-thinking`, `claude-4.6-opus-thinking`, `gpt-5-thinking`, `gpt-5.1-thinking`, `gpt-5.2-thinking`, `gpt-5.4-thinking`, `grok-4.1-reasoning`, `kimi-k2.5-thinking`.
+- `PERPLEXITY_COMPUTER_MODEL` (optional, requires token): Model for `perplexity_computer`.
+  Valid values: `asi`, `asi-beta`, `claude-4.6-sonnet` / `claude-4.6-sonnet-thinking`, `claude-4.6-opus` / `claude-4.6-opus-thinking` (default), `gpt-5.4`, `kimi`, `qwen`.
+- **`raw:` escape hatch:** any of the three model vars also accepts `raw:<preference>` to pass an arbitrary Perplexity preference string straight through, for models newer than this build's validated list (e.g. `PERPLEXITY_REASON_MODEL=raw:glm5_thinking`). No recompile needed.
+- `PERPLEXITY_TIMEOUT_SECS` (optional, default: `30`): Request timeout in seconds for fast modes (search, ask, reason).
+- `PERPLEXITY_LONG_TIMEOUT_SECS` (optional, default: `600`): Request timeout in seconds for long-running modes — **Deep Research**, Computer, and Document Review. Raise this if deep-research runs are being cut off.
 - `PERPLEXITY_INCOGNITO` (optional, default: `true`): Whether requests should use Perplexity's incognito mode.
   Valid values: `true` or `false`
 
 ### Claude Code
 
 ```bash
-claude mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" --env PERPLEXITY_CSRF_TOKEN="your-csrf-token" -- npx -y perplexity-web-api-mcp
+claude mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" -- npx -y perplexity-web-api-mcp
 ```
 
 ### Cursor, Claude Desktop & Windsurf
@@ -102,8 +95,7 @@ For manual setup, all these clients use the same `mcpServers` format:
       "command": "npx",
       "args": ["-y", "perplexity-web-api-mcp"],
       "env": {
-        "PERPLEXITY_SESSION_TOKEN": "your-session-token",
-        "PERPLEXITY_CSRF_TOKEN": "your-csrf-token"
+        "PERPLEXITY_SESSION_TOKEN": "your-session-token"
       }
     }
   }
@@ -121,8 +113,7 @@ Add following following to `context_servers` in your [settings file](https://zed
       "command": "npx",
       "args": ["-y", "perplexity-web-api-mcp"],
       "env": {
-        "PERPLEXITY_SESSION_TOKEN": "your-session-token",
-        "PERPLEXITY_CSRF_TOKEN": "your-csrf-token"
+        "PERPLEXITY_SESSION_TOKEN": "your-session-token"
       }
     }
   }
@@ -141,8 +132,7 @@ I recommend using the one-click install badge at the top of this README for VS C
       "command": "npx",
       "args": ["-y", "perplexity-web-api-mcp"],
       "env": {
-        "PERPLEXITY_SESSION_TOKEN": "your-session-token",
-        "PERPLEXITY_CSRF_TOKEN": "your-csrf-token"
+        "PERPLEXITY_SESSION_TOKEN": "your-session-token"
       }
     }
   }
@@ -152,7 +142,7 @@ I recommend using the one-click install badge at the top of this README for VS C
 ### Codex
 
 ```bash
-codex mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" --env PERPLEXITY_CSRF_TOKEN="your-csrf-token" -- npx -y perplexity-web-api-mcp
+codex mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" -- npx -y perplexity-web-api-mcp
 ```
 
 ### Building from Source
@@ -171,7 +161,6 @@ A pre-built multi-arch image (`linux/amd64`, `linux/arm64`) is available on Dock
 docker run -d \
   -p 8080:8080 \
   -e PERPLEXITY_SESSION_TOKEN="your-session-token" \
-  -e PERPLEXITY_CSRF_TOKEN="your-csrf-token" \
   mishamyrt/perplexity-web-api-mcp
 ```
 
@@ -198,7 +187,7 @@ Configure your MCP client to connect:
 | `MCP_HOST` | `0.0.0.0` | Host address to bind |
 | `MCP_PORT` | `8080` | Port to listen on |
 
-The [authentication tokens, model variables, and incognito flag](#configuration) described above work the same way in Docker.
+The [authentication token, model variables, and incognito flag](#configuration) described above work the same way in Docker.
 
 ## Available Tools
 
@@ -218,13 +207,13 @@ Quick web search using the `turbo` model. Returns only links, titles, and snippe
 
 ### `perplexity_ask`
 
-Ask Perplexity AI a question and get a comprehensive answer with source citations. By default uses the best model (Pro auto mode) when authentication tokens are provided, or `turbo` in tokenless mode. Can be configured via `PERPLEXITY_ASK_MODEL`.
+Ask Perplexity AI a question and get a comprehensive answer with source citations. By default uses the best model (Pro auto mode) when authenticated, or `turbo` in tokenless mode. Can be configured via `PERPLEXITY_ASK_MODEL`.
 
 **Best for:** Getting detailed answers to questions with web context.
 
 **Parameters:** Same as `perplexity_search`, plus:
 
-- `files` (optional, requires tokens): Array of file attachments for document analysis. See [File Attachments](#file-attachments).
+- `files` (optional, requires token): Array of file attachments for document analysis. See [File Attachments](#file-attachments).
 
 ### `perplexity_reason`
 
@@ -244,7 +233,7 @@ Deep, comprehensive research using Perplexity's sonar-deep-research (`pplx_alpha
 
 ## File Attachments
 
-`perplexity_ask`, `perplexity_research`, and `perplexity_reason` accept an optional `files` parameter for document analysis. **Requires authentication tokens.**
+`perplexity_ask`, `perplexity_research`, and `perplexity_reason` accept an optional `files` parameter for document analysis. **Requires authentication token.**
 
 Each entry in the `files` array must have:
 

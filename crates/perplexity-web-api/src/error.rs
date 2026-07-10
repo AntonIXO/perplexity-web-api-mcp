@@ -32,6 +32,12 @@ pub enum Error {
     #[error("File uploads require authentication cookies")]
     FileUploadRequiresAuth,
 
+    /// Connector sources require authentication cookies.
+    #[error(
+        "Connector sources (e.g. google_drive, gcal, notion_mcp) require authentication cookies"
+    )]
+    ConnectorRequiresAuth,
+
     /// Failed to get upload URL.
     #[error("Failed to get upload URL: {0}")]
     UploadUrlFailed(#[source] rquest::Error),
@@ -66,6 +72,47 @@ pub enum Error {
 
     #[error("Invalid API base url")]
     InvalidBaseUrl,
+
+    /// Failed to fetch CSRF token from /api/auth/csrf.
+    #[error("Failed to fetch CSRF token: {0}")]
+    CsrfFetch(#[source] rquest::Error),
+
+    /// CSRF token was not present in the /api/auth/csrf response.
+    #[error("CSRF token missing from /api/auth/csrf response")]
+    CsrfTokenMissing,
+
+    /// Both a custom HTTP client and authentication cookies were provided.
+    #[error(
+        "cannot combine custom HTTP client with authentication cookies; manage cookies on the provided client directly"
+    )]
+    CustomClientWithCookies,
+
+    /// Rate-limit inspection requires authentication cookies.
+    #[error(
+        "Rate-limit inspection requires authentication cookies (set PERPLEXITY_SESSION_TOKEN)"
+    )]
+    RateLimitRequiresAuth,
+
+    /// Failed to fetch rate limits from /rest/rate-limit/all.
+    #[error("Failed to fetch rate limits: {0}")]
+    RateLimitFetch(#[source] rquest::Error),
+
+    /// The relevant plan quota is exhausted for the requested search mode.
+    ///
+    /// Perplexity's SSE endpoint responds with an empty answer (rather than an
+    /// HTTP error) once a quota runs out; this error is raised after detecting
+    /// that condition via `/rest/rate-limit/all`, so callers get an actionable
+    /// message instead of a silent empty result.
+    #[error(
+        "Perplexity quota exhausted: {feature} has {remaining} queries remaining. \
+         The request was not answered because the plan limit for this mode is reached."
+    )]
+    RateLimited {
+        /// Human-readable feature name (e.g. "Pro Search", "Deep Research").
+        feature: &'static str,
+        /// Remaining queries for that feature (0 when exhausted).
+        remaining: i64,
+    },
 }
 
 /// Convenience Result type for this crate.

@@ -20,11 +20,11 @@
             <p class="hero-subtitle">Powerful AI tools in your IDE <b>without API fees</b>.<br>Just use your Perplexity account.</p>
             
             <div class="hero-actions">
-                <a href="https://cursor.com/en/install-mcp?name=perplexity-web&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInBlcnBsZXhpdHktd2ViLWFwaS1tY3AiXSwiZW52Ijp7IlBFUlBMRVhJVFlfU0VTU0lPTl9UT0tFTiI6IiIsIlBFUlBMRVhJVFlfQ1NSRl9UT0tFTiI6IiJ9fQ==" class="btn btn-primary">
+                <a href="https://cursor.com/en/install-mcp?name=perplexity-web&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInBlcnBsZXhpdHktd2ViLWFwaS1tY3AiXSwiZW52Ijp7IlBFUlBMRVhJVFlfU0VTU0lPTl9UT0tFTiI6IiJ9fQ==" class="btn btn-primary">
                     <svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><clipPath id="a"><path d="m0 0h24v24h-24z"/></clipPath><g clip-path="url(#a)"><path d="m22.1349 5.6806-9.6165-5.546977c-.3088-.1781639-.6899-.1781639-.9987 0l-9.61645 5.546977c-.25958.14975-.41985.42669-.41985.72664v11.18556c0 .2995.16027.5768.41985.7266l9.61645 5.547c.3088.1781.6899.1781.9987 0l9.6165-5.547c.2595-.1498.4198-.4267.4198-.7266v-11.18556c0-.2995-.1603-.57689-.4198-.72664zm-.6041 1.17498-9.2833 16.06452c-.0628.1082-.2284.064-.2284-.0614v-10.5188c0-.2102-.1125-.4046-.2948-.5102l-9.11813-5.25963c-.10835-.0627-.06411-.22823.0614-.22823h18.56663c.2637 0 .4284.28551.2966.51374z" fill="currentColor"/></g></svg>
                     Install in Cursor
                 </a>
-                <a href="https://vscode.dev/redirect/mcp/install?name=perplexity-web&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22perplexity-web-api-mcp%22%5D%2C%22env%22%3A%7B%22PERPLEXITY_SESSION_TOKEN%22%3A%22%22%2C%22PERPLEXITY_CSRF_TOKEN%22%3A%22%22%7D%7D" class="btn btn-secondary">
+                <a href="https://vscode.dev/redirect/mcp/install?name=perplexity-web&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22perplexity-web-api-mcp%22%5D%2C%22env%22%3A%7B%22PERPLEXITY_SESSION_TOKEN%22%3A%22%22%7D%7D" class="btn btn-secondary">
                     <i class="fa-solid fa-code"></i>
                     VS Code
                 </a>
@@ -58,7 +58,6 @@
                     <div class="tab-content active" id="claude-code">
                         <pre><code><span class="code-keyword">claude</span> mcp add perplexity \
   <span class="code-flag">--env</span> <span class="code-prop">PERPLEXITY_SESSION_TOKEN</span>=<span class="code-string">"..."</span> \
-  <span class="code-flag">--env</span> <span class="code-prop">PERPLEXITY_CSRF_TOKEN</span>=<span class="code-string">"..."</span> \
   <span class="code-flag">--</span> npx -y perplexity-web-api-mcp</code></pre>
                     </div>
                     <div class="tab-content" id="cursor">
@@ -66,8 +65,7 @@
   <span class="code-prop">"command"</span><span class="code-punct">:</span> <span class="code-string">"npx"</span><span class="code-punct">,</span>
   <span class="code-prop">"args"</span><span class="code-punct">:</span> <span class="code-punct">[</span><span class="code-string">"-y"</span><span class="code-punct">,</span> <span class="code-string">"perplexity-web-api-mcp"</span><span class="code-punct">],</span>
   <span class="code-prop">"env"</span><span class="code-punct">:</span> <span class="code-punct">{</span>
-    <span class="code-prop">"PERPLEXITY_SESSION_TOKEN"</span><span class="code-punct">:</span> <span class="code-string">"..."</span><span class="code-punct">,</span>
-    <span class="code-prop">"PERPLEXITY_CSRF_TOKEN"</span><span class="code-punct">:</span> <span class="code-string">"..."</span>
+    <span class="code-prop">"PERPLEXITY_SESSION_TOKEN"</span><span class="code-punct">:</span> <span class="code-string">"..."</span>
   <span class="code-punct">}</span>
 <span class="code-punct">}</span></code></pre>
                     </div>
@@ -84,7 +82,7 @@
                 </div>
                 <div class="faq-card">
                     <h3>How to get tokens?</h3>
-                    <p>Open <b>perplexity.ai</b>, Inspect → Application → Cookies.<br>Copy <code>session-token</code> and <code>csrf-token</code>.</p>
+                    <p>Open <b>perplexity.ai</b>, Inspect → Application → Cookies.<br>Copy <code>session-token</code>.</p>
                 </div>
                 <div class="faq-card">
                     <h3>Is it free?</h3>

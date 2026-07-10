@@ -1,7 +1,7 @@
 use base64::Engine as _;
 use perplexity_web_api::{
-    Client, ModelPreference, ReasonModel, SearchMode, SearchModel, SearchRequest,
-    SearchWebResult, Source, UploadFile,
+    Client, ModelPreference, RateLimits, SearchMode, SearchRequest, SearchWebResult, Source,
+    UploadFile,
 };
 use rmcp::{
     ErrorData as McpError, ServerHandler,
@@ -35,7 +35,12 @@ pub struct PerplexitySearchRequest {
     /// The search query or question to ask.
     pub query: String,
 
-    /// Information sources to search. Valid values: "web", "scholar", "social".
+    /// Information sources to search.
+    /// Standard (no auth): "web", "scholar", "social".
+    /// Connectors (require auth + connected account): "google_drive", "gcal",
+    /// "outlook", "notion_mcp", "github_mcp_direct", "linear_alt",
+    /// "slack_direct", "jira_mcp_merge", "confluence_mcp_merge",
+    /// "microsoft_teams_mcp_merge", "onedrive", "sharepoint", "dropbox", "box".
     /// Defaults to ["web"] if not specified.
     #[serde(default)]
     pub sources: Option<Vec<String>>,
@@ -51,7 +56,12 @@ pub struct PerplexityRequest {
     /// The search query or question to ask.
     pub query: String,
 
-    /// Information sources to search. Valid values: "web", "scholar", "social".
+    /// Information sources to search.
+    /// Standard (no auth): "web", "scholar", "social".
+    /// Connectors (require auth + connected account): "google_drive", "gcal",
+    /// "outlook", "notion_mcp", "github_mcp_direct", "linear_alt",
+    /// "slack_direct", "jira_mcp_merge", "confluence_mcp_merge",
+    /// "microsoft_teams_mcp_merge", "onedrive", "sharepoint", "dropbox", "box".
     /// Defaults to ["web"] if not specified.
     #[serde(default)]
     pub sources: Option<Vec<String>>,
@@ -61,7 +71,7 @@ pub struct PerplexityRequest {
     pub language: Option<String>,
 
     /// Optional file attachments for document analysis.
-    /// Requires authentication tokens (PERPLEXITY_SESSION_TOKEN + PERPLEXITY_CSRF_TOKEN).
+    /// Requires authentication token (PERPLEXITY_SESSION_TOKEN).
     /// Each entry needs `filename` and either `text` (plain text) or `data` (base64 binary).
     #[serde(default)]
     pub files: Option<Vec<FileAttachment>>,
@@ -107,8 +117,9 @@ pub struct SearchOnlyResponse {
 #[derive(Clone)]
 pub struct PerplexityServer {
     client: Client,
-    ask_model: Option<SearchModel>,
-    reason_model: Option<ReasonModel>,
+    ask_model: Option<ModelPreference>,
+    reason_model: Option<ModelPreference>,
+    computer_model: Option<ModelPreference>,
     tokenless: bool,
     incognito: bool,
 }
@@ -129,12 +140,13 @@ impl PerplexityServer {
     /// removed from the router.
     pub fn new(
         client: Client,
-        ask_model: Option<SearchModel>,
-        reason_model: Option<ReasonModel>,
+        ask_model: Option<ModelPreference>,
+        reason_model: Option<ModelPreference>,
+        computer_model: Option<ModelPreference>,
         tokenless: bool,
         incognito: bool,
     ) -> Self {
-        Self { client, ask_model, reason_model, tokenless, incognito }
+        Self { client, ask_model, reason_model, computer_model, tokenless, incognito }
     }
 
     /// Converts a `FileAttachment` from tool parameters into an `UploadFile`.
@@ -193,8 +205,8 @@ impl PerplexityServer {
                 }
                 if self.tokenless {
                     return Err(McpError::invalid_params(
-                        "File attachments require authentication tokens. \
-                         Set PERPLEXITY_SESSION_TOKEN and PERPLEXITY_CSRF_TOKEN.",
+                        "File attachments require authentication. \
+                         Set PERPLEXITY_SESSION_TOKEN.",
                         None,
                     ));
                 }
@@ -311,14 +323,7 @@ impl PerplexityServer {
         &self,
         Parameters(params): Parameters<PerplexityRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let response = self
-            .do_search(
-                params,
-                SearchMode::Auto,
-                self.ask_model.map(ModelPreference::from),
-                true,
-            )
-            .await?;
+        let response = self.do_search(params, SearchMode::Auto, self.ask_model, true).await?;
         to_json_tool_result(&response)
     }
 
@@ -377,15 +382,125 @@ impl PerplexityServer {
         Parameters(params): Parameters<PerplexityRequest>,
     ) -> Result<CallToolResult, McpError> {
         to_json_tool_result(
-            &self
-                .do_search(
-                    params,
-                    SearchMode::Reasoning,
-                    self.reason_model.map(ModelPreference::from),
-                    true,
-                )
-                .await?,
+            &self.do_search(params, SearchMode::Reasoning, self.reason_model, true).await?,
         )
+    }
+
+    /// Perplexity Computer, an agentic AI that can browse the web, run code, and use connected services.
+    ///
+    /// Best for: Tasks that require the LLM to take actions, browse the web,
+    /// run code, or interact with connected services.
+    #[tool(
+        name = "perplexity_computer",
+        description = "Execute a task using Perplexity Computer, an agentic AI that can browse the web, \
+                run code, and use connected services. \
+                Best for: multi-step tasks, data analysis with connectors (Google Drive, Calendar, Notion, GitHub), \
+                web automation, and tasks requiring tool use. \
+                Requires authentication tokens. Significantly slower than other tools (30+ seconds). \
+                Sources can include connected services like google_drive, gcal, notion_mcp, github_mcp_direct, etc. \
+                Supports optional file attachments via the `files` parameter.",
+        annotations(
+            title = "Perplexity Computer",
+            read_only_hint = false,
+            open_world_hint = true,
+            destructive_hint = false,
+            idempotent_hint = false
+        )
+    )]
+    pub async fn perplexity_computer(
+        &self,
+        Parameters(params): Parameters<PerplexityRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        to_json_tool_result(
+            &self.do_search(params, SearchMode::Computer, self.computer_model, true).await?,
+        )
+    }
+
+    /// Study mode — tutor-style explanations with step-by-step teaching.
+    ///
+    /// Best for: learning new concepts, guided explanations, and educational
+    /// breakdowns of complex topics.
+    #[tool(
+        name = "perplexity_study",
+        description = "Answer a question in tutor-style study mode with step-by-step, \
+                pedagogical explanations. \
+                Best for: learning new concepts, guided walkthroughs, test prep, \
+                and educational breakdowns. \
+                Requires authentication tokens. \
+                Supports optional file attachments via the `files` parameter.",
+        annotations(
+            title = "Study Mode",
+            read_only_hint = true,
+            open_world_hint = true,
+            destructive_hint = false,
+            idempotent_hint = false
+        )
+    )]
+    pub async fn perplexity_study(
+        &self,
+        Parameters(params): Parameters<PerplexityRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        to_json_tool_result(&self.do_search(params, SearchMode::Study, None, true).await?)
+    }
+
+    /// Document review mode — detailed analysis of uploaded documents.
+    ///
+    /// Best for: extracting findings, summarizing long documents, and reviewing
+    /// contracts, papers, or reports with uploaded files.
+    #[tool(
+        name = "perplexity_document_review",
+        description = "Perform detailed analysis and review of uploaded documents. \
+                Best for: contract review, paper analysis, long-document summarization, \
+                and extracting structured findings from PDFs or text files. \
+                Requires authentication tokens. \
+                Attach the document(s) via the `files` parameter (required for best results).",
+        annotations(
+            title = "Document Review",
+            read_only_hint = true,
+            open_world_hint = true,
+            destructive_hint = false,
+            idempotent_hint = false
+        )
+    )]
+    pub async fn perplexity_document_review(
+        &self,
+        Parameters(params): Parameters<PerplexityRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        to_json_tool_result(
+            &self.do_search(params, SearchMode::DocumentReview, None, true).await?,
+        )
+    }
+
+    /// Current usage quotas / rate-limit status for the authenticated account.
+    ///
+    /// Returns remaining Pro Search (weekly), Deep Research, Create Files & Apps,
+    /// and Browser Agent / Computer quotas, plus any per-source monthly limits.
+    #[tool(
+        name = "perplexity_usage",
+        description = "Report the authenticated account's current Perplexity usage quotas: \
+                remaining Pro Search (weekly), Deep Research (monthly), Create Files & Apps, \
+                and Browser Agent / Computer queries, plus per-source monthly limits. \
+                Useful to check why a request returned empty (quota exhausted) or to budget usage. \
+                Requires authentication tokens.",
+        annotations(
+            title = "Perplexity Usage / Rate Limits",
+            read_only_hint = true,
+            open_world_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true
+        )
+    )]
+    pub async fn perplexity_usage(&self) -> Result<CallToolResult, McpError> {
+        if self.tokenless {
+            return Err(McpError::invalid_params(
+                "perplexity_usage requires authentication. Set PERPLEXITY_SESSION_TOKEN.",
+                None,
+            ));
+        }
+        let limits: RateLimits = self.client.rate_limits().await.map_err(|e| {
+            McpError::internal_error(format!("Failed to fetch rate limits: {}", e), None)
+        })?;
+        to_json_tool_result(&limits)
     }
 }
 
@@ -402,6 +517,13 @@ impl ServerHandler for PerplexityServer {
             instructions.push_str(
                 " Use perplexity_research for in-depth multi-source investigation (slow, 60s+). \
                 Use perplexity_reason for complex analysis requiring step-by-step logic. \
+                Use perplexity_computer for agentic tasks with tool use and connected services. \
+                Use perplexity_study for tutor-style step-by-step explanations. \
+                Use perplexity_document_review for detailed analysis of uploaded documents. \
+                All tools accept a `sources` parameter for connector-scoped queries: \
+                standard sources (web, scholar, social) work without auth; \
+                connectors (google_drive, gcal, outlook, notion_mcp, github_mcp_direct, etc.) \
+                require authentication and a connected account. \
                 All tools support an optional `files` parameter for document analysis: \
                 pass an array of objects each with `filename` and either `text` (plain-text content) \
                 or `data` (base64-encoded binary content, e.g. for PDFs).",
