@@ -29,14 +29,13 @@ permissions:
 jobs:
   build:
     name: build (${{ matrix.target }})
+    # A single broken target must not block the release. The release job
+    # filters out missing artifacts and uploads whatever did build.
+    continue-on-error: true
     strategy:
       # Don't cancel siblings on first failure — partial releases are still
-      # useful, and one flaky runner (esp. free macOS Intel) should not block
-      # the whole release.
+      # useful, and one flaky runner should not block the whole release.
       fail-fast: false
-      # A single broken target must not block the release. The release job
-      # filters out missing artifacts and uploads whatever did build.
-      continue-on-error: true
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
