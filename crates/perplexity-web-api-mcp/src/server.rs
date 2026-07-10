@@ -1,7 +1,7 @@
 use base64::Engine as _;
 use perplexity_web_api::{
-    Client, ComputerModel, ModelPreference, ReasonModel, SearchMode, SearchModel, SearchRequest,
-    SearchWebResult, Source, UploadFile,
+    Client, ComputerModel, ModelPreference, RateLimits, ReasonModel, SearchMode, SearchModel,
+    SearchRequest, SearchWebResult, Source, UploadFile,
 };
 use rmcp::{
     ErrorData as McpError, ServerHandler,
@@ -490,6 +490,38 @@ impl PerplexityServer {
         to_json_tool_result(
             &self.do_search(params, SearchMode::DocumentReview, None, true).await?,
         )
+    }
+
+    /// Current usage quotas / rate-limit status for the authenticated account.
+    ///
+    /// Returns remaining Pro Search (weekly), Deep Research, Create Files & Apps,
+    /// and Browser Agent / Computer quotas, plus any per-source monthly limits.
+    #[tool(
+        name = "perplexity_usage",
+        description = "Report the authenticated account's current Perplexity usage quotas: \
+                remaining Pro Search (weekly), Deep Research (monthly), Create Files & Apps, \
+                and Browser Agent / Computer queries, plus per-source monthly limits. \
+                Useful to check why a request returned empty (quota exhausted) or to budget usage. \
+                Requires authentication tokens.",
+        annotations(
+            title = "Perplexity Usage / Rate Limits",
+            read_only_hint = true,
+            open_world_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true
+        )
+    )]
+    pub async fn perplexity_usage(&self) -> Result<CallToolResult, McpError> {
+        if self.tokenless {
+            return Err(McpError::invalid_params(
+                "perplexity_usage requires authentication. Set PERPLEXITY_SESSION_TOKEN.",
+                None,
+            ));
+        }
+        let limits: RateLimits = self.client.rate_limits().await.map_err(|e| {
+            McpError::internal_error(format!("Failed to fetch rate limits: {}", e), None)
+        })?;
+        to_json_tool_result(&limits)
     }
 }
 

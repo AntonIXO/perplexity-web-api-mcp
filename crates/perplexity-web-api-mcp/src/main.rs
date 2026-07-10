@@ -115,11 +115,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // so that setting an empty/whitespace-only value is treated as "unset".
         // Note: since PR #14 the CSRF token is fetched dynamically, so only
         // PERPLEXITY_SESSION_TOKEN is required to enable model configuration.
-        for name in [
-            "PERPLEXITY_ASK_MODEL",
-            "PERPLEXITY_REASON_MODEL",
-            "PERPLEXITY_COMPUTER_MODEL",
-        ] {
+        for name in
+            ["PERPLEXITY_ASK_MODEL", "PERPLEXITY_REASON_MODEL", "PERPLEXITY_COMPUTER_MODEL"]
+        {
             if optional_env(name)?.is_some() {
                 return Err(std::io::Error::other(format!(
                     "{name} cannot be used without authentication.\n\n\

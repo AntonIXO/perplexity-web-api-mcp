@@ -1,9 +1,10 @@
 use crate::auth::{AuthCookies, CSRF_TOKEN_COOKIE_NAME};
 use crate::config::{
     API_BASE_URL, API_MODE_CONCISE, API_MODE_COPILOT, API_VERSION, ENDPOINT_AUTH_CSRF,
-    ENDPOINT_AUTH_SESSION, ENDPOINT_SSE_ASK,
+    ENDPOINT_AUTH_SESSION, ENDPOINT_RATE_LIMITS, ENDPOINT_SSE_ASK,
 };
 use crate::error::{Error, Result};
+use crate::rate_limit::RateLimits;
 use crate::sse::SseStream;
 use crate::types::{
     AskParams, AskPayload, FollowUpContext, SearchEvent, SearchMode, SearchRequest,
@@ -199,6 +200,11 @@ impl Client {
     ) -> Result<impl Stream<Item = Result<SearchEvent>>> {
         self.validate_request(&request)?;
 
+        // Pre-flight quota check: Perplexity's SSE endpoint silently returns an
+        // empty answer once a plan quota is exhausted, so proactively surface a
+        // clear "out of limit" error for authenticated, metered modes.
+        self.check_quota_for_mode(request.mode).await?;
+
         let file_refs: Vec<&UploadFile> = request.files.iter().collect();
         let mut attachments = upload_files(&self.http, &file_refs, self.timeout).await?;
 
@@ -271,6 +277,65 @@ impl Client {
             return Err(Error::FileUploadRequiresAuth);
         }
         upload_files(&self.http, files, self.timeout).await
+    }
+
+    /// Fetches the current rate-limit / usage-quota status.
+    ///
+    /// Reads Perplexity's internal `/rest/rate-limit/all` endpoint (the same one
+    /// the web UI uses to render usage counters). Requires authentication
+    /// cookies; returns [`Error::RateLimitRequiresAuth`] otherwise.
+    pub async fn rate_limits(&self) -> Result<RateLimits> {
+        if !self.has_cookies {
+            return Err(Error::RateLimitRequiresAuth);
+        }
+
+        let fut = self.http.get(format!("{}{}", API_BASE_URL, ENDPOINT_RATE_LIMITS)).send();
+        let response = tokio::time::timeout(self.timeout, fut)
+            .await
+            .map_err(|_| Error::Timeout(self.timeout))?
+            .map_err(Error::RateLimitFetch)?
+            .error_for_status()
+            .map_err(Error::RateLimitFetch)?;
+
+        let limits: RateLimits = response.json().await.map_err(Error::RateLimitFetch)?;
+        Ok(limits)
+    }
+
+    /// Verifies that the plan quota for `mode` is not exhausted.
+    ///
+    /// For authenticated, metered modes this fetches the current quota and
+    /// returns [`Error::RateLimited`] when no queries remain, converting
+    /// Perplexity's silent empty-answer behaviour into an actionable error.
+    ///
+    /// No-ops (returns `Ok`) for tokenless clients, for the free
+    /// [`SearchMode::Auto`] path, or if the quota endpoint is unreachable — a
+    /// transient failure to read quotas should not block an otherwise valid
+    /// request.
+    pub async fn check_quota_for_mode(&self, mode: SearchMode) -> Result<()> {
+        if !self.has_cookies {
+            return Ok(());
+        }
+        // Free/unmetered mode draws no plan quota.
+        if RateLimits::default().quota_for_mode(mode).is_none() {
+            return Ok(());
+        }
+
+        match self.rate_limits().await {
+            Ok(limits) => {
+                if let Some(status) = limits.quota_for_mode(mode)
+                    && status.is_exhausted()
+                {
+                    return Err(Error::RateLimited {
+                        feature: status.feature,
+                        remaining: status.remaining,
+                    });
+                }
+                Ok(())
+            }
+            // Don't fail an otherwise-valid request just because the quota probe
+            // failed (network blip, endpoint change) — proceed with the request.
+            Err(_) => Ok(()),
+        }
     }
 
     fn validate_request(&self, request: &SearchRequest) -> Result<()> {

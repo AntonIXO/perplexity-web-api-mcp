@@ -94,6 +94,7 @@ mod config;
 mod error;
 mod models;
 mod parse;
+mod rate_limit;
 mod sse;
 mod types;
 mod upload;
@@ -102,6 +103,7 @@ pub use auth::{AuthCookies, CSRF_TOKEN_COOKIE_NAME, SESSION_TOKEN_COOKIE_NAME};
 pub use client::{Client, ClientBuilder};
 pub use error::{Error, Result};
 pub use models::{ComputerModel, ModelPreference, ReasonModel, SearchModel};
+pub use rate_limit::{QuotaStatus, RateLimits, SourceLimit, Sources};
 pub use types::{
     FollowUpContext, SearchEvent, SearchMode, SearchRequest, SearchResponse, SearchWebResult,
     Source, UploadFile,
