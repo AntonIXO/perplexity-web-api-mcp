@@ -21,17 +21,28 @@ use uuid::Uuid;
 /// Default request timeout (30 seconds).
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Default timeout for long-running modes (Deep Research, Computer, Document
+/// Review): 10 minutes. Deep Research can legitimately run for several minutes
+/// before the stream completes, so the short default would abort it prematurely.
+const DEFAULT_LONG_TIMEOUT: Duration = Duration::from_secs(600);
+
 /// Builder for creating a configured [`Client`] instance.
 pub struct ClientBuilder {
     cookies: Option<AuthCookies>,
     http_client: Option<HttpClient>,
     timeout: Duration,
+    long_timeout: Duration,
 }
 
 impl ClientBuilder {
     /// Creates a new builder with default settings.
     pub fn new() -> Self {
-        Self { cookies: None, http_client: None, timeout: DEFAULT_TIMEOUT }
+        Self {
+            cookies: None,
+            http_client: None,
+            timeout: DEFAULT_TIMEOUT,
+            long_timeout: DEFAULT_LONG_TIMEOUT,
+        }
     }
 
     /// Sets authentication cookies for the client.
@@ -50,11 +61,22 @@ impl ClientBuilder {
         self
     }
 
-    /// Sets the request timeout.
+    /// Sets the request timeout for standard (fast) modes.
     ///
     /// Default is 30 seconds.
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
+        self
+    }
+
+    /// Sets the request timeout for long-running modes (Deep Research, Computer,
+    /// Document Review).
+    ///
+    /// Default is 10 minutes. These modes can hold the connection open for
+    /// minutes before the stream completes, so they use a separate, larger
+    /// budget than [`timeout`](Self::timeout).
+    pub fn long_timeout(mut self, long_timeout: Duration) -> Self {
+        self.long_timeout = long_timeout;
         self
     }
 
@@ -63,7 +85,7 @@ impl ClientBuilder {
     /// When authentication cookies are provided, the CSRF token is fetched
     /// dynamically from `/api/auth/csrf` before the session warm-up.
     pub async fn build(self) -> Result<Client> {
-        let Self { cookies, http_client, timeout } = self;
+        let Self { cookies, http_client, timeout, long_timeout } = self;
         let has_cookies = cookies.is_some();
 
         let http = match http_client {
@@ -109,7 +131,7 @@ impl ClientBuilder {
             .map_err(|_| Error::Timeout(timeout))?
             .map_err(Error::SessionWarmup)?;
 
-        Ok(Client { http, has_cookies, timeout })
+        Ok(Client { http, has_cookies, timeout, long_timeout })
     }
 
     /// Fetches the CSRF token from `/api/auth/csrf`.
@@ -160,6 +182,7 @@ pub struct Client {
     http: HttpClient,
     has_cookies: bool,
     timeout: Duration,
+    long_timeout: Duration,
 }
 
 impl Client {
@@ -254,9 +277,15 @@ impl Client {
             .json(&payload)
             .send();
 
-        let response = tokio::time::timeout(self.timeout, request_fut)
+        // Long-running modes (Deep Research, Computer, Document Review) can hold
+        // the connection open for minutes; give them the larger timeout budget
+        // so the request isn't aborted before the stream completes.
+        let request_timeout =
+            if request.mode.is_long_running() { self.long_timeout } else { self.timeout };
+
+        let response = tokio::time::timeout(request_timeout, request_fut)
             .await
-            .map_err(|_| Error::Timeout(self.timeout))?
+            .map_err(|_| Error::Timeout(request_timeout))?
             .map_err(Error::SearchRequest)?
             .error_for_status()
             .map_err(|e| Error::Server {

@@ -12,6 +12,17 @@ impl ModelPreference {
     pub const fn as_str(&self) -> &'static str {
         self.0
     }
+
+    /// Wraps an arbitrary preference string as an escape hatch for models that
+    /// Perplexity has shipped but that are not yet in the validated enums.
+    ///
+    /// The string is leaked to obtain a `'static` lifetime, so this must only be
+    /// called a bounded number of times (e.g. once at startup from an env var),
+    /// never per-request. Prefer the typed [`SearchModel`] / [`ReasonModel`] /
+    /// [`ComputerModel`] variants when the model is known.
+    pub fn from_raw(preference: impl Into<String>) -> Self {
+        Self(Box::leak(preference.into().into_boxed_str()))
+    }
 }
 
 macro_rules! define_model_enum {
@@ -131,6 +142,14 @@ define_model_enum! {
         Gpt54 => { name: "gpt-5.4", preference: "gpt54" },
         /// GPT-5.4 Mini.
         Gpt54Mini => { name: "gpt-5.4-mini", preference: "gpt54mini" },
+        /// GPT-5.2.
+        Gpt52 => { name: "gpt-5.2", preference: "gpt52" },
+        /// GPT-5.2 Pro.
+        Gpt52Pro => { name: "gpt-5.2-pro", preference: "gpt52_pro" },
+
+        // ── xAI ──
+        /// Grok 4.1 (non-reasoning).
+        Grok41 => { name: "grok-4.1", preference: "grok41nonreasoning" },
     }
 }
 
@@ -159,6 +178,14 @@ define_model_enum! {
         Gpt52Thinking => { name: "gpt-5.2-thinking", preference: "gpt52_thinking" },
         /// GPT-5.4 with thinking.
         Gpt54Thinking => { name: "gpt-5.4-thinking", preference: "gpt54_thinking" },
+
+        // ── xAI reasoning models ──
+        /// Grok 4.1 (reasoning).
+        Grok41Reasoning => { name: "grok-4.1-reasoning", preference: "grok41reasoning" },
+
+        // ── Moonshot reasoning models ──
+        /// Kimi K2.5 with thinking.
+        KimiK25Thinking => { name: "kimi-k2.5-thinking", preference: "kimik25thinking" },
     }
 }
 

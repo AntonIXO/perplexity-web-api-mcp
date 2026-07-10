@@ -2,9 +2,11 @@
 
 mod server;
 
-use perplexity_web_api::{AuthCookies, Client, ComputerModel, ReasonModel, SearchModel};
+use perplexity_web_api::{
+    AuthCookies, Client, ComputerModel, ModelPreference, ReasonModel, SearchModel,
+};
 use rmcp::{ServiceExt, transport::stdio};
-use std::{env, env::VarError};
+use std::{env, env::VarError, time::Duration};
 use tracing_subscriber::fmt;
 
 use crate::server::PerplexityServer;
@@ -55,28 +57,50 @@ fn optional_env(name: &str) -> Result<Option<String>, std::io::Error> {
     }
 }
 
-/// Reads an optional default model from environment.
-fn optional_model_env<T>(name: &str) -> Result<Option<T>, std::io::Error>
+/// Reads an optional model preference from environment, accepting either a
+/// known model name (validated against the typed enum) or a `raw:<preference>`
+/// escape hatch that passes an arbitrary preference string straight through to
+/// the Perplexity API. The escape hatch lets brand-new Perplexity models be
+/// used without a recompile; the typed path stays validated.
+fn optional_model_pref_env<T>(name: &str) -> Result<Option<ModelPreference>, std::io::Error>
 where
-    T: std::str::FromStr,
+    T: std::str::FromStr + Into<ModelPreference>,
     T::Err: std::fmt::Display,
 {
-    match env::var(name) {
-        Ok(value) => {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                return Ok(None);
-            }
+    let Some(value) = optional_env(name)? else {
+        return Ok(None);
+    };
 
-            trimmed.parse::<T>().map(Some).map_err(|e| {
-                std::io::Error::other(format!("Invalid environment variable {name}: {e}"))
-            })
+    if let Some(raw) = value.strip_prefix("raw:") {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return Err(std::io::Error::other(format!(
+                "Invalid environment variable {name}: 'raw:' prefix requires a preference string"
+            )));
         }
-        Err(VarError::NotPresent) => Ok(None),
-        Err(VarError::NotUnicode(_)) => Err(std::io::Error::other(format!(
-            "Environment variable {name} must be valid UTF-8"
-        ))),
+        return Ok(Some(ModelPreference::from_raw(raw.to_owned())));
     }
+
+    let model = value.parse::<T>().map_err(|e| {
+        std::io::Error::other(format!(
+            "Invalid environment variable {name}: {e}. \
+             To use a model not in the validated list, pass it as 'raw:<preference>'."
+        ))
+    })?;
+    Ok(Some(model.into()))
+}
+
+/// Reads an optional duration (in whole seconds) from an environment variable.
+fn optional_duration_env(name: &str) -> Result<Option<Duration>, std::io::Error> {
+    let Some(value) = optional_env(name)? else {
+        return Ok(None);
+    };
+    let secs: u64 = value.parse().map_err(|_| {
+        std::io::Error::other(format!(
+            "Invalid environment variable {name}: expected a whole number of seconds"
+        ))
+    })?;
+    Ok(Some(Duration::from_secs(secs)))
 }
 
 /// Reads an optional boolean environment variable, returning `default` if not present.
@@ -111,7 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (default_ask_model, default_reason_model, default_computer_model) = if tokenless {
         // In tokenless mode, model overrides are not supported.
-        // Use the same trim-and-check-empty semantics as optional_env/optional_model_env
+        // Use the same trim-and-check-empty semantics as optional_env
         // so that setting an empty/whitespace-only value is treated as "unset".
         // Note: since PR #14 the CSRF token is fetched dynamically, so only
         // PERPLEXITY_SESSION_TOKEN is required to enable model configuration.
@@ -127,12 +151,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .into());
             }
         }
-        (Some(SearchModel::Turbo), None, None)
+        (Some(ModelPreference::from(SearchModel::Turbo)), None, None)
     } else {
-        let ask = optional_model_env::<SearchModel>("PERPLEXITY_ASK_MODEL")?
-            .unwrap_or(SearchModel::ProAuto);
-        let reason = optional_model_env::<ReasonModel>("PERPLEXITY_REASON_MODEL")?;
-        let computer = optional_model_env::<ComputerModel>("PERPLEXITY_COMPUTER_MODEL")?;
+        let ask = optional_model_pref_env::<SearchModel>("PERPLEXITY_ASK_MODEL")?
+            .unwrap_or_else(|| SearchModel::ProAuto.into());
+        let reason = optional_model_pref_env::<ReasonModel>("PERPLEXITY_REASON_MODEL")?;
+        let computer = optional_model_pref_env::<ComputerModel>("PERPLEXITY_COMPUTER_MODEL")?;
         (Some(ask), reason, computer)
     };
 
@@ -152,6 +176,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = Client::builder();
     if let Some(session) = session_token {
         builder = builder.cookies(AuthCookies::new(session));
+    }
+    // Optional timeout overrides. Long-running modes (Deep Research, Computer,
+    // Document Review) use the larger `long_timeout` budget so they aren't
+    // aborted mid-run; the default is 10 minutes.
+    if let Some(t) = optional_duration_env("PERPLEXITY_TIMEOUT_SECS")? {
+        builder = builder.timeout(t);
+    }
+    if let Some(t) = optional_duration_env("PERPLEXITY_LONG_TIMEOUT_SECS")? {
+        builder = builder.long_timeout(t);
     }
 
     let client = builder.build().await.map_err(|e| {

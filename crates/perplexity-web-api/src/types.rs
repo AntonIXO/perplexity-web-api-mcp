@@ -47,6 +47,13 @@ impl SearchMode {
             _ => "home",
         }
     }
+
+    /// Returns `true` for modes that legitimately run for a long time before the
+    /// first bytes arrive (Deep Research, Computer agentic runs, Document
+    /// Review), and therefore need a much longer client-side request timeout.
+    pub const fn is_long_running(&self) -> bool {
+        matches!(self, Self::DeepResearch | Self::Computer | Self::DocumentReview)
+    }
 }
 
 /// Information source for search queries.

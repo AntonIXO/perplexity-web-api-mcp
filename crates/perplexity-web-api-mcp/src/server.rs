@@ -1,7 +1,7 @@
 use base64::Engine as _;
 use perplexity_web_api::{
-    Client, ComputerModel, ModelPreference, RateLimits, ReasonModel, SearchMode, SearchModel,
-    SearchRequest, SearchWebResult, Source, UploadFile,
+    Client, ModelPreference, RateLimits, SearchMode, SearchRequest, SearchWebResult, Source,
+    UploadFile,
 };
 use rmcp::{
     ErrorData as McpError, ServerHandler,
@@ -117,9 +117,9 @@ pub struct SearchOnlyResponse {
 #[derive(Clone)]
 pub struct PerplexityServer {
     client: Client,
-    ask_model: Option<SearchModel>,
-    reason_model: Option<ReasonModel>,
-    computer_model: Option<ComputerModel>,
+    ask_model: Option<ModelPreference>,
+    reason_model: Option<ModelPreference>,
+    computer_model: Option<ModelPreference>,
     tokenless: bool,
     incognito: bool,
 }
@@ -140,9 +140,9 @@ impl PerplexityServer {
     /// removed from the router.
     pub fn new(
         client: Client,
-        ask_model: Option<SearchModel>,
-        reason_model: Option<ReasonModel>,
-        computer_model: Option<ComputerModel>,
+        ask_model: Option<ModelPreference>,
+        reason_model: Option<ModelPreference>,
+        computer_model: Option<ModelPreference>,
         tokenless: bool,
         incognito: bool,
     ) -> Self {
@@ -323,14 +323,7 @@ impl PerplexityServer {
         &self,
         Parameters(params): Parameters<PerplexityRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let response = self
-            .do_search(
-                params,
-                SearchMode::Auto,
-                self.ask_model.map(ModelPreference::from),
-                true,
-            )
-            .await?;
+        let response = self.do_search(params, SearchMode::Auto, self.ask_model, true).await?;
         to_json_tool_result(&response)
     }
 
@@ -389,14 +382,7 @@ impl PerplexityServer {
         Parameters(params): Parameters<PerplexityRequest>,
     ) -> Result<CallToolResult, McpError> {
         to_json_tool_result(
-            &self
-                .do_search(
-                    params,
-                    SearchMode::Reasoning,
-                    self.reason_model.map(ModelPreference::from),
-                    true,
-                )
-                .await?,
+            &self.do_search(params, SearchMode::Reasoning, self.reason_model, true).await?,
         )
     }
 
@@ -426,14 +412,7 @@ impl PerplexityServer {
         Parameters(params): Parameters<PerplexityRequest>,
     ) -> Result<CallToolResult, McpError> {
         to_json_tool_result(
-            &self
-                .do_search(
-                    params,
-                    SearchMode::Computer,
-                    self.computer_model.map(ModelPreference::from),
-                    true,
-                )
-                .await?,
+            &self.do_search(params, SearchMode::Computer, self.computer_model, true).await?,
         )
     }
 

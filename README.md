@@ -57,20 +57,16 @@ This server requires a Perplexity AI account. You need to extract the session to
 
 ### Environment Variables
 
-- `PERPLEXITY_SESSION_TOKEN` (optional): Perplexity session token (`__Secure-next-auth.session-token` cookie). Required for `perplexity_research`, `perplexity_reason`, and file attachments.
+- `PERPLEXITY_SESSION_TOKEN` (optional): Perplexity session token (`__Secure-next-auth.session-token` cookie). Required for `perplexity_research`, `perplexity_reason`, `perplexity_computer`, and file attachments. The CSRF token is fetched automatically — no `PERPLEXITY_CSRF_TOKEN` needed.
 - `PERPLEXITY_ASK_MODEL` (optional, requires token): Model for `perplexity_ask`.
-  Valid values:
-    - `turbo` (default for tokenless)
-    - `pro-auto` (default for authenticated)
-    - `sonar`
-    - `gpt-5.4`
-    - `claude-4.6-sonnet`
-    - `nemotron-3-super`
+  Valid values: `turbo`, `pro-auto` (default), `pro-upgraded`, `sonar`, `nemotron-3-super`, `claude-4.6-sonnet`, `claude-4.6-opus`, `gemini-3.0-flash`, `gemini-3.0-pro`, `gpt-5-pro`, `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.2`, `gpt-5.2-pro`, `grok-4.1`.
 - `PERPLEXITY_REASON_MODEL` (optional, requires token): Model for `perplexity_reason`.
-  Valid values:
-    - `gemini-3.1-pro` (default)
-    - `gpt-5.4-thinking`
-    - `claude-4.6-sonnet-thinking`
+  Valid values: `gemini-3.1-pro` (default), `gemini-3.0-flash-high`, `claude-4.6-sonnet-thinking`, `claude-4.6-opus-thinking`, `gpt-5-thinking`, `gpt-5.1-thinking`, `gpt-5.2-thinking`, `gpt-5.4-thinking`, `grok-4.1-reasoning`, `kimi-k2.5-thinking`.
+- `PERPLEXITY_COMPUTER_MODEL` (optional, requires token): Model for `perplexity_computer`.
+  Valid values: `asi`, `asi-beta`, `claude-4.6-sonnet` / `claude-4.6-sonnet-thinking`, `claude-4.6-opus` / `claude-4.6-opus-thinking` (default), `gpt-5.4`, `kimi`, `qwen`.
+- **`raw:` escape hatch:** any of the three model vars also accepts `raw:<preference>` to pass an arbitrary Perplexity preference string straight through, for models newer than this build's validated list (e.g. `PERPLEXITY_REASON_MODEL=raw:glm5_thinking`). No recompile needed.
+- `PERPLEXITY_TIMEOUT_SECS` (optional, default: `30`): Request timeout in seconds for fast modes (search, ask, reason).
+- `PERPLEXITY_LONG_TIMEOUT_SECS` (optional, default: `600`): Request timeout in seconds for long-running modes — **Deep Research**, Computer, and Document Review. Raise this if deep-research runs are being cut off.
 - `PERPLEXITY_INCOGNITO` (optional, default: `true`): Whether requests should use Perplexity's incognito mode.
   Valid values: `true` or `false`
 
