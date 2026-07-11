@@ -64,11 +64,43 @@ This server requires a Perplexity AI account. You need to extract the session to
   Valid values: `gemini-3.1-pro` (default), `gemini-3.0-flash-high`, `claude-4.6-sonnet-thinking`, `claude-4.6-opus-thinking`, `gpt-5-thinking`, `gpt-5.1-thinking`, `gpt-5.2-thinking`, `gpt-5.4-thinking`, `grok-4.1-reasoning`, `kimi-k2.5-thinking`.
 - `PERPLEXITY_COMPUTER_MODEL` (optional, requires token): Model for `perplexity_computer`.
   Valid values: `asi`, `asi-beta`, `claude-4.6-sonnet` / `claude-4.6-sonnet-thinking`, `claude-4.6-opus` / `claude-4.6-opus-thinking` (default), `gpt-5.4`, `kimi`, `qwen`.
-- **`raw:` escape hatch:** any of the three model vars also accepts `raw:<preference>` to pass an arbitrary Perplexity preference string straight through, for models newer than this build's validated list (e.g. `PERPLEXITY_REASON_MODEL=raw:glm5_thinking`). No recompile needed.
+- **`raw:` escape hatch:** any of the three model vars also accepts `raw:<preference>` to pass an arbitrary Perplexity preference string straight through, for models newer than this build's validated list (e.g. `PERPLEXITY_REASON_MODEL=raw:glm_5_2`). No recompile needed. **Important:** each mode only accepts models from its own family — `PERPLEXITY_ASK_MODEL` takes an "ask"-family preference, `PERPLEXITY_REASON_MODEL` takes a "reasoning"-family preference, and the two are not interchangeable. Setting a reasoning-only model (e.g. GLM 5.2 via `raw:glm_5_2`) as `PERPLEXITY_ASK_MODEL` will make `perplexity_ask` silently return `answer: null` instead of erroring — Perplexity's backend accepts the (wrong-family) preference string but produces no output for it. If `perplexity_ask` or `perplexity_reason` starts returning `null` answers after changing a model var, check that the model actually belongs to that tool's family before assuming a rate-limit or auth issue. See [Discovering available models](#discovering-available-models) below for how to find which family a model preference belongs to.
 - `PERPLEXITY_TIMEOUT_SECS` (optional, default: `30`): Request timeout in seconds for fast modes (search, ask, reason).
 - `PERPLEXITY_LONG_TIMEOUT_SECS` (optional, default: `600`): Request timeout in seconds for long-running modes — **Deep Research**, Computer, and Document Review. Raise this if deep-research runs are being cut off.
+  **Note:** this timeout lives inside the Perplexity HTTP client only. If you're also being cut off by your *MCP client's own* tool-call timeout (a separate, client-side setting — see [Progress heartbeats](#progress-heartbeats-for-long-running-tools) below), raising this variable alone won't help; you also need to raise (or auto-extend via progress) the client's timeout.
+- `PERPLEXITY_PROGRESS_INTERVAL_SECS` (optional, default: `10`): How often (in seconds) to emit `notifications/progress` heartbeats during a tool call, when the caller's request included a `progressToken`. See [Progress heartbeats](#progress-heartbeats-for-long-running-tools) below.
 - `PERPLEXITY_INCOGNITO` (optional, default: `true`): Whether requests should use Perplexity's incognito mode.
   Valid values: `true` or `false`
+
+### Discovering Available Models
+
+Perplexity doesn't publish a stable model list in this server's code alone — the typed enums (`SearchModel`, `ReasonModel`, `ComputerModel` in `crates/perplexity-web-api/src/models.rs`) are a **snapshot** that goes stale as Perplexity ships new models. Two live sources let you check what's actually available on your account before using the `raw:` escape hatch:
+
+1. **Model config endpoint** (no login required): [`https://www.perplexity.ai/rest/models/config`](https://www.perplexity.ai/rest/models/config) — returns the full JSON list of every model Perplexity's frontend knows about, grouped by which mode(s) it's valid for (`ask`, `reason`/copilot, `computer`/agentic, etc.) along with its internal `preference` string (the exact value you pass to `raw:<preference>`). This is the authoritative source for "does model X exist" and "which family (ask vs reason vs computer) does it belong to" — cross-check against this before filing a bug report about a model returning `null`.
+2. **Rate limit / usage endpoint** (requires a logged-in browser session — Cloudflare blocks non-browser requests): [`https://www.perplexity.ai/rest/rate-limit/all`](https://www.perplexity.ai/rest/rate-limit/all) — returns your account's current quota status per feature (`remaining_pro`, `remaining_research`, `remaining_labs`, `remaining_agentic_research`, plus per-source monthly limits). Also exposed as the `perplexity_usage` MCP tool, but that tool call hits the same Cloudflare wall as any other non-browser client and will return an HTTP 403 unless you're proxying through a real browser session (see the code comment on `perplexity_usage` in `crates/perplexity-web-api-mcp/src/server.rs` for the current status of that limitation).
+
+To pull the config JSON from a terminal:
+
+```bash
+curl -s 'https://www.perplexity.ai/rest/models/config' | jq .
+```
+
+If you find a model preference that isn't in the typed enums yet, either (a) use it immediately via `raw:<preference>` — no recompile needed — or (b) open a PR adding it to `models.rs` so it gets schema validation and shows up in tool descriptions.
+
+### Progress Heartbeats for Long-Running Tools
+
+`perplexity_research`, `perplexity_computer`, and `perplexity_document_review` (and, less commonly, `perplexity_reason` on a heavy query) can legitimately hold Perplexity's SSE connection open for **minutes** with no intermediate bytes — this looks identical to a hung request from an MCP client's point of view.
+
+Per the [MCP Lifecycle spec's Timeouts section](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle#timeouts), a client **MAY** reset its own per-request timeout clock every time it receives a `notifications/progress` message tied to that request's `progressToken` — but the spec doesn't let a *server* force this; it's entirely a client-side opt-in (`resetTimeoutOnProgress` in the TypeScript SDK, or equivalent in other clients). A `SHOULD`-level absolute maximum timeout still applies on top, regardless of progress notifications, so this cannot make a request run forever.
+
+This server implements the server side of that contract:
+
+- If (and only if) the caller's `tools/call` request includes `_meta.progressToken`, a background task sends a `notifications/progress` message every `PERPLEXITY_PROGRESS_INTERVAL_SECS` (default 10s) for the duration of the call.
+- `progress` is a monotonically increasing tick counter — Perplexity's streaming search API doesn't expose a real percent-complete signal, and the spec only requires `progress` to increase, not to mean anything specific. `message` explains this in plain English for clients that surface it to a human ("Still working — Perplexity request in flight, no timeout yet.").
+- The heartbeat is a `tokio` task tied to the tool call's lifetime: it's spawned right before the underlying HTTP request and aborted on drop, whichever way the call ends (success, error, or client cancellation).
+- No `progressToken` in the request → **zero overhead**, no task is spawned.
+
+**This does not replace `PERPLEXITY_LONG_TIMEOUT_SECS`** — that variable still governs how long this server's own HTTP client will wait for Perplexity's API before giving up. The two settings solve different halves of the same problem: `PERPLEXITY_LONG_TIMEOUT_SECS` controls how long *this server* is willing to wait, and the progress heartbeat controls how long *your MCP client* is willing to wait, provided your client supports `resetTimeoutOnProgress` (or equivalent) and actually sends a `progressToken`. Many MCP clients (including some simple stdio wrappers) don't set a `progressToken` at all, in which case only the client's static configured timeout applies and you'll need to raise that directly in your client's config.
 
 ### Claude Code
 

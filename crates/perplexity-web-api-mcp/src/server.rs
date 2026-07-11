@@ -4,12 +4,18 @@ use perplexity_web_api::{
     UploadFile,
 };
 use rmcp::{
-    ErrorData as McpError, ServerHandler,
+    ErrorData as McpError, RoleServer, ServerHandler,
     handler::server::wrapper::Parameters,
-    model::{CallToolResult, Content, Implementation, ServerCapabilities, ServerInfo},
-    schemars, tool, tool_handler, tool_router,
+    model::{
+        CallToolResult, Content, Implementation, ProgressNotificationParam,
+        ServerCapabilities, ServerInfo,
+    },
+    schemars,
+    service::RequestContext,
+    tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// A file to attach to the query for document analysis.
 /// Requires authentication tokens. Provide either `text` or `data`, not both.
@@ -122,6 +128,9 @@ pub struct PerplexityServer {
     computer_model: Option<ModelPreference>,
     tokenless: bool,
     incognito: bool,
+    /// Interval between `notifications/progress` heartbeats for long-running
+    /// tool calls. See [`ProgressHeartbeat`].
+    progress_interval: Duration,
 }
 
 fn to_json_tool_result(value: &impl Serialize) -> Result<CallToolResult, McpError> {
@@ -138,6 +147,10 @@ impl PerplexityServer {
     /// (both with the `turbo` model) are registered. The `perplexity_research` and
     /// `perplexity_reason` tools require authenticated session cookies and are
     /// removed from the router.
+    ///
+    /// `progress_interval` controls how often long-running tool calls emit
+    /// `notifications/progress` heartbeats (only sent when the caller supplied
+    /// a `progressToken`); see [`ProgressHeartbeat`].
     pub fn new(
         client: Client,
         ask_model: Option<ModelPreference>,
@@ -145,8 +158,17 @@ impl PerplexityServer {
         computer_model: Option<ModelPreference>,
         tokenless: bool,
         incognito: bool,
+        progress_interval: Duration,
     ) -> Self {
-        Self { client, ask_model, reason_model, computer_model, tokenless, incognito }
+        Self {
+            client,
+            ask_model,
+            reason_model,
+            computer_model,
+            tokenless,
+            incognito,
+            progress_interval,
+        }
     }
 
     /// Converts a `FileAttachment` from tool parameters into an `UploadFile`.
@@ -187,12 +209,19 @@ impl PerplexityServer {
     ///
     /// When `files_allowed` is `false`, the method rejects any request that
     /// contains file attachments with a clear error before doing anything else.
+    ///
+    /// `context` carries the caller's MCP request metadata. If the client sent
+    /// a `progressToken` (`_meta.progressToken` on the `tools/call` request),
+    /// a background heartbeat sends periodic `notifications/progress` for the
+    /// duration of the request — see [`ProgressHeartbeat`] for why this
+    /// matters for long-running modes like Deep Research.
     async fn do_search(
         &self,
         params: PerplexityRequest,
         mode: SearchMode,
         model_preference: Option<ModelPreference>,
         files_allowed: bool,
+        context: &RequestContext<RoleServer>,
     ) -> Result<PerplexityResponse, McpError> {
         let files: Vec<UploadFile> = if let Some(attachments) = params.files {
             if !attachments.is_empty() {
@@ -255,6 +284,10 @@ impl PerplexityServer {
             request = request.language(language);
         }
 
+        // Held for the lifetime of the request; aborts itself on drop (success,
+        // error, or early return via `?`) so it never outlives this call.
+        let _heartbeat = ProgressHeartbeat::start(context, self.progress_interval);
+
         let response = self.client.search(request).await.map_err(|e| {
             McpError::internal_error(format!("Perplexity API error: {}", e), None)
         })?;
@@ -269,6 +302,76 @@ impl PerplexityServer {
                 attachments: follow_up.attachments,
             },
         })
+    }
+}
+
+/// Sends periodic `notifications/progress` for a long-running tool call.
+///
+/// ## Why this exists
+///
+/// The MCP spec (`Timeouts` section of the Lifecycle spec) lets a client
+/// reset its per-request timeout clock every time it receives a progress
+/// notification tied to that request's `progressToken` — but this is a
+/// client-side `MAY`, not something a server can force. Perplexity's Deep
+/// Research / Computer / Document Review modes hold an SSE connection open
+/// for minutes with no intermediate bytes, which looks identical to a hung
+/// request from the client's point of view. Emitting a heartbeat every few
+/// seconds is what lets a spec-compliant client (one with
+/// `resetTimeoutOnProgress` enabled) keep the connection alive automatically
+/// instead of requiring an ever-larger fixed `timeout` in its own config.
+///
+/// This is *not* real progress — Perplexity's API doesn't expose a percent-
+/// complete signal for streaming search, so `progress` is just a
+/// monotonically increasing tick counter (the spec only requires it to
+/// increase, not to mean anything) and `message` explains that in plain
+/// English for clients that surface it to a human.
+///
+/// ## Behavior
+///
+/// - No-ops entirely if the client didn't send a `progressToken` in the
+///   original request's `_meta` (most non-interactive/scripted clients
+///   don't bother). No task is spawned in that case.
+/// - Stops silently if `peer.notify_progress` starts failing (e.g. the peer
+///   disconnected) rather than spinning forever.
+/// - Always aborts on drop, so a heartbeat never outlives the request it
+///   belongs to, whether the request succeeded, errored, or was cancelled.
+struct ProgressHeartbeat {
+    handle: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl ProgressHeartbeat {
+    fn start(context: &RequestContext<RoleServer>, interval: Duration) -> Self {
+        let Some(token) = context.meta.get_progress_token() else {
+            return Self { handle: None };
+        };
+        let peer = context.peer.clone();
+        let handle = tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(interval);
+            // The first tick fires immediately; skip it so the first
+            // heartbeat lands after a full `interval`, not at t=0.
+            ticker.tick().await;
+            let mut progress: f64 = 0.0;
+            loop {
+                ticker.tick().await;
+                progress += 1.0;
+                let notification = ProgressNotificationParam::new(token.clone(), progress)
+                    .with_message(
+                        "Still working — Perplexity request in flight, no timeout yet.",
+                    );
+                if peer.notify_progress(notification).await.is_err() {
+                    break;
+                }
+            }
+        });
+        Self { handle: Some(handle) }
+    }
+}
+
+impl Drop for ProgressHeartbeat {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
     }
 }
 
@@ -295,8 +398,10 @@ impl PerplexityServer {
     pub async fn perplexity_search(
         &self,
         Parameters(params): Parameters<PerplexitySearchRequest>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        let response = self.do_search(params.into(), SearchMode::Auto, None, false).await?;
+        let response =
+            self.do_search(params.into(), SearchMode::Auto, None, false, &context).await?;
         to_json_tool_result(&SearchOnlyResponse { web_results: response.web_results })
     }
 
@@ -322,8 +427,10 @@ impl PerplexityServer {
     pub async fn perplexity_ask(
         &self,
         Parameters(params): Parameters<PerplexityRequest>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        let response = self.do_search(params, SearchMode::Auto, self.ask_model, true).await?;
+        let response =
+            self.do_search(params, SearchMode::Auto, self.ask_model, true, &context).await?;
         to_json_tool_result(&response)
     }
 
@@ -351,9 +458,10 @@ impl PerplexityServer {
     pub async fn perplexity_research(
         &self,
         Parameters(params): Parameters<PerplexityRequest>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         to_json_tool_result(
-            &self.do_search(params, SearchMode::DeepResearch, None, true).await?,
+            &self.do_search(params, SearchMode::DeepResearch, None, true, &context).await?,
         )
     }
 
@@ -380,9 +488,12 @@ impl PerplexityServer {
     pub async fn perplexity_reason(
         &self,
         Parameters(params): Parameters<PerplexityRequest>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         to_json_tool_result(
-            &self.do_search(params, SearchMode::Reasoning, self.reason_model, true).await?,
+            &self
+                .do_search(params, SearchMode::Reasoning, self.reason_model, true, &context)
+                .await?,
         )
     }
 
@@ -410,9 +521,12 @@ impl PerplexityServer {
     pub async fn perplexity_computer(
         &self,
         Parameters(params): Parameters<PerplexityRequest>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         to_json_tool_result(
-            &self.do_search(params, SearchMode::Computer, self.computer_model, true).await?,
+            &self
+                .do_search(params, SearchMode::Computer, self.computer_model, true, &context)
+                .await?,
         )
     }
 
@@ -439,8 +553,11 @@ impl PerplexityServer {
     pub async fn perplexity_study(
         &self,
         Parameters(params): Parameters<PerplexityRequest>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        to_json_tool_result(&self.do_search(params, SearchMode::Study, None, true).await?)
+        to_json_tool_result(
+            &self.do_search(params, SearchMode::Study, None, true, &context).await?,
+        )
     }
 
     /// Document review mode — detailed analysis of uploaded documents.
@@ -465,9 +582,10 @@ impl PerplexityServer {
     pub async fn perplexity_document_review(
         &self,
         Parameters(params): Parameters<PerplexityRequest>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         to_json_tool_result(
-            &self.do_search(params, SearchMode::DocumentReview, None, true).await?,
+            &self.do_search(params, SearchMode::DocumentReview, None, true, &context).await?,
         )
     }
 

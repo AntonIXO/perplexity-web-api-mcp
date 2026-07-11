@@ -19,7 +19,7 @@ streamable-http = ["dep:axum", "rmcp/transport-streamable-http-server"]
 [dependencies]
 perplexity-web-api = { workspace = true, features = ["schemars"] }
 
-tokio = { workspace = true, features = ["signal"] }
+tokio = { workspace = true, features = ["signal", "time"] }
 rmcp = { workspace = true }
 axum = { workspace = true, optional = true }
 serde = { workspace = true }

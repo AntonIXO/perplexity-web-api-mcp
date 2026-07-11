@@ -194,6 +194,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Perplexity client initialized");
 
+    // How often to emit `notifications/progress` heartbeats during long-running
+    // tool calls (only sent when the client supplied a `progressToken`).
+    // Spec-compliant clients with `resetTimeoutOnProgress` enabled can then
+    // extend their own per-request timeout on each heartbeat instead of
+    // needing an ever-larger static `timeout` in their MCP client config.
+    // Default 10s is comfortably inside typical client timeouts (60-180s)
+    // while staying cheap.
+    let progress_interval = optional_duration_env("PERPLEXITY_PROGRESS_INTERVAL_SECS")?
+        .unwrap_or(Duration::from_secs(10));
+
     let server = PerplexityServer::new(
         client,
         default_ask_model,
@@ -201,6 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         default_computer_model,
         tokenless,
         incognito,
+        progress_interval,
     );
 
     let transport = optional_env("MCP_TRANSPORT")?.unwrap_or_else(|| "stdio".to_owned());
