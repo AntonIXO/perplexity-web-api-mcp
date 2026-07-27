@@ -1,7 +1,7 @@
 [package]
 name = "perplexity-web-api"
 description = "Async Rust client library for Perplexity AI Web API"
-version = "0.0.0"
+version = "0.12.0"
 publish = false
 edition = { workspace = true }
 license = { workspace = true }
@@ -25,4 +25,5 @@ thiserror = { workspace = true }
 pin-project-lite = { workspace = true }
 rquest = { workspace = true }
 rquest-util = { workspace = true }
+regex-lite = { workspace = true }
 schemars = { workspace = true, optional = true }

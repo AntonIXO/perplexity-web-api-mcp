@@ -86,6 +86,7 @@
 //! - [`Source::GoogleDrive`], [`Source::GoogleCalendar`], [`Source::Outlook`]
 //! - [`Source::Notion`], [`Source::GitHub`], [`Source::Slack`], [`Source::Linear`]
 //! - [`Source::Jira`], [`Source::Confluence`], [`Source::MicrosoftTeams`]
+//! - [`Source::HuggingFace`] and any other unknown connector IDs via [`Source::Custom`]
 //! - [`Source::Custom`] - User-specific remote MCP connectors
 
 mod auth;
@@ -103,6 +104,7 @@ pub use auth::{AuthCookies, CSRF_TOKEN_COOKIE_NAME, SESSION_TOKEN_COOKIE_NAME};
 pub use client::{Client, ClientBuilder};
 pub use error::{Error, Result};
 pub use models::{ComputerModel, ModelPreference, ReasonModel, SearchModel};
+pub use parse::extract_thread_uuid_or_slug;
 pub use rate_limit::{QuotaStatus, RateLimits, SourceLimit, Sources};
 pub use types::{
     FollowUpContext, SearchEvent, SearchMode, SearchRequest, SearchResponse, SearchWebResult,

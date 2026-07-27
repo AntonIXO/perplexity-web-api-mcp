@@ -127,6 +127,42 @@ pub enum Source {
 }
 
 impl Source {
+    fn known_source_name(input: &str) -> Option<Self> {
+        let normalized = input.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "web" => Some(Self::Web),
+            "scholar" => Some(Self::Scholar),
+            "social" => Some(Self::Social),
+            "google_drive" => Some(Self::GoogleDrive),
+            "gcal" | "google_calendar" | "googlecalendar" | "gcalendar" => {
+                Some(Self::GoogleCalendar)
+            }
+            "onedrive" | "one_drive" => Some(Self::OneDrive),
+            "sharepoint" => Some(Self::SharePoint),
+            "dropbox" => Some(Self::Dropbox),
+            "box" => Some(Self::Box),
+            "outlook" => Some(Self::Outlook),
+            "notion" | "notion_mcp" => Some(Self::Notion),
+            "github" | "github_mcp_direct" => Some(Self::GitHub),
+            "linear" | "linear_alt" => Some(Self::Linear),
+            "asana" | "asana_mcp_merge" => Some(Self::Asana),
+            "slack" | "slack_direct" => Some(Self::Slack),
+            "jira" | "jira_mcp_merge" => Some(Self::Jira),
+            "confluence" | "confluence_mcp_merge" => Some(Self::Confluence),
+            "teams" | "microsoft_teams" | "microsoft_teams_mcp_merge" => {
+                Some(Self::MicrosoftTeams)
+            }
+            "hubspot" => Some(Self::HubSpot),
+            "monday" => Some(Self::Monday),
+            "supabase" => Some(Self::Supabase),
+            "vercel" => Some(Self::Vercel),
+            "sentry" => Some(Self::Sentry),
+            "huggingface" | "hugging_face" => Some(Self::HuggingFace),
+            "cloudinary" => Some(Self::Cloudinary),
+            _ => None,
+        }
+    }
+
     /// Returns the API string for this source.
     pub fn as_str(&self) -> &str {
         match self {
@@ -175,34 +211,7 @@ impl FromStr for Source {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "web" => Ok(Self::Web),
-            "scholar" => Ok(Self::Scholar),
-            "social" => Ok(Self::Social),
-            "google_drive" => Ok(Self::GoogleDrive),
-            "onedrive" => Ok(Self::OneDrive),
-            "sharepoint" => Ok(Self::SharePoint),
-            "dropbox" => Ok(Self::Dropbox),
-            "box" => Ok(Self::Box),
-            "gcal" => Ok(Self::GoogleCalendar),
-            "outlook" => Ok(Self::Outlook),
-            "notion_mcp" => Ok(Self::Notion),
-            "github_mcp_direct" => Ok(Self::GitHub),
-            "linear_alt" => Ok(Self::Linear),
-            "asana_mcp_merge" => Ok(Self::Asana),
-            "slack_direct" => Ok(Self::Slack),
-            "jira_mcp_merge" => Ok(Self::Jira),
-            "confluence_mcp_merge" => Ok(Self::Confluence),
-            "microsoft_teams_mcp_merge" => Ok(Self::MicrosoftTeams),
-            "hubspot" => Ok(Self::HubSpot),
-            "monday" => Ok(Self::Monday),
-            "supabase" => Ok(Self::Supabase),
-            "vercel" => Ok(Self::Vercel),
-            "sentry" => Ok(Self::Sentry),
-            "hugging_face" => Ok(Self::HuggingFace),
-            "cloudinary" => Ok(Self::Cloudinary),
-            other => Ok(Self::Custom(other.to_owned())),
-        }
+        Ok(Self::known_source_name(s).unwrap_or_else(|| Self::Custom(s.trim().to_owned())))
     }
 }
 
@@ -439,4 +448,48 @@ pub(crate) struct BatchUploadFileResponse {
 pub(crate) struct BatchUploadFileMeta {
     pub s3_object_url: String,
     pub uuid: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Source;
+    use std::str::FromStr;
+
+    #[test]
+    fn parses_source_aliases_and_canonical_ids() {
+        assert_eq!(Source::from_str("github").unwrap(), Source::GitHub);
+        assert_eq!(Source::from_str("github_mcp_direct").unwrap(), Source::GitHub);
+        assert_eq!(Source::from_str("huggingface").unwrap(), Source::HuggingFace);
+        assert_eq!(Source::from_str("hugging_face").unwrap(), Source::HuggingFace);
+        assert_eq!(Source::from_str("gcal").unwrap(), Source::GoogleCalendar);
+        assert_eq!(Source::from_str("google_calendar").unwrap(), Source::GoogleCalendar);
+        assert_eq!(Source::from_str("NOTION").unwrap(), Source::Notion);
+        assert_eq!(Source::from_str("teams").unwrap(), Source::MicrosoftTeams);
+    }
+
+    #[test]
+    fn canonical_source_serialization_uses_api_identifiers() {
+        assert_eq!(Source::GitHub.as_str(), "github_mcp_direct");
+        assert_eq!(Source::GitHub.to_string(), "github_mcp_direct");
+        assert_eq!(Source::HuggingFace.as_str(), "hugging_face");
+        assert_eq!(Source::GoogleCalendar.as_str(), "gcal");
+        assert_eq!(Source::MicrosoftTeams.as_str(), "microsoft_teams_mcp_merge");
+    }
+
+    #[test]
+    fn source_public_and_auth_classification_is_correct() {
+        assert!(Source::Web.is_public());
+        assert!(Source::Scholar.is_public());
+        assert!(Source::Social.is_public());
+        assert!(!Source::GitHub.is_public());
+        assert!(!Source::HuggingFace.is_public());
+        assert!(!Source::Custom("my_company_connector".to_owned()).is_public());
+    }
+
+    #[test]
+    fn preserves_unknown_sources_as_custom() {
+        let source = Source::from_str("company_mcp_direct").unwrap();
+        assert_eq!(source, Source::Custom("company_mcp_direct".to_owned()));
+        assert_eq!(source.as_str(), "company_mcp_direct");
+    }
 }

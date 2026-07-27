@@ -57,7 +57,7 @@ This server requires a Perplexity AI account. You need to extract the session to
 
 ### Environment Variables
 
-- `PERPLEXITY_SESSION_TOKEN` (optional): Perplexity session token (`__Secure-next-auth.session-token` cookie). Required for `perplexity_research`, `perplexity_reason`, `perplexity_computer`, and file attachments. The CSRF token is fetched automatically — no `PERPLEXITY_CSRF_TOKEN` needed.
+- `PERPLEXITY_SESSION_TOKEN` (optional): Perplexity session token (`__Secure-next-auth.session-token` cookie). Required for `perplexity_research`, `perplexity_reason`, `perplexity_computer`, `perplexity_view_chat`, connectors, and file attachments. The CSRF token is fetched automatically — no `PERPLEXITY_CSRF_TOKEN` needed.
 - `PERPLEXITY_ASK_MODEL` (optional, requires token): Model for `perplexity_ask`.
   Valid values: `turbo`, `pro-auto` (default), `pro-upgraded`, `sonar`, `nemotron-3-super`, `claude-4.6-sonnet`, `claude-4.6-opus`, `gemini-3.0-flash`, `gemini-3.0-pro`, `gpt-5-pro`, `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.2`, `gpt-5.2-pro`, `grok-4.1`.
 - `PERPLEXITY_REASON_MODEL` (optional, requires token): Model for `perplexity_reason`.
@@ -232,7 +232,12 @@ Quick web search using the `turbo` model. Returns only links, titles, and snippe
 **Parameters:**
 
 - `query` (required): The search query or question
-- `sources` (optional): Array of sources — `"web"`, `"scholar"`, `"social"`. Defaults to `["web"]`
+- `sources` (optional): Array of sources — `"web"`, `"scholar"`, `"social"`, plus connectors like
+  `"google_drive"`, `"gcal"` / `"google_calendar"`, `"github_mcp_direct"` / `"github"`,
+  `"hugging_face"` / `"huggingface"`, `"notion_mcp"` / `"notion"`, `"linear_alt"` / `"linear"`,
+  `"slack_direct"` / `"slack"`, `"jira_mcp_merge"` / `"jira"`, `"confluence_mcp_merge"` / `"confluence"`,
+  `"microsoft_teams_mcp_merge"` / `"teams"`, `"onedrive"`, `"sharepoint"`, `"dropbox"`, `"box"`.
+  Unknown connector IDs are passed through unchanged. Defaults to `["web"]`
 - `language` (optional): Language code, e.g., `"en-US"`. Defaults to `"en-US"`
 
 > File attachments are not supported by this tool.
@@ -262,6 +267,17 @@ Deep, comprehensive research using Perplexity's sonar-deep-research (`pplx_alpha
 **Best for:** Complex topics requiring detailed investigation, comprehensive reports, and in-depth analysis. Provides thorough analysis with citations.
 
 **Parameters:** Same as `perplexity_ask`.
+
+### `perplexity_view_chat`
+
+Loads the context of an existing Perplexity search/chat and asks Perplexity to extract or summarize it.
+
+**Parameters:**
+
+- `url_or_id` (required): Full `perplexity.ai/search/...` URL, thread UUID, or thread slug
+- `query` (optional): A specific question about the thread. By default, returns a detailed question-by-question breakdown
+
+Requires `PERPLEXITY_SESSION_TOKEN`. Internally this uses Perplexity's follow-up mechanism, so the inspection query may appear as a new turn in the referenced thread.
 
 ## File Attachments
 

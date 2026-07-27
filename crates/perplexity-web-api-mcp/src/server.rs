@@ -43,10 +43,14 @@ pub struct PerplexitySearchRequest {
 
     /// Information sources to search.
     /// Standard (no auth): "web", "scholar", "social".
-    /// Connectors (require auth + connected account): "google_drive", "gcal",
-    /// "outlook", "notion_mcp", "github_mcp_direct", "linear_alt",
-    /// "slack_direct", "jira_mcp_merge", "confluence_mcp_merge",
-    /// "microsoft_teams_mcp_merge", "onedrive", "sharepoint", "dropbox", "box".
+    /// Connectors (require auth + connected account): "google_drive",
+    /// "gcal" / "google_calendar", "outlook", "notion_mcp" / "notion",
+    /// "github_mcp_direct" / "github", "linear_alt" / "linear",
+    /// "slack_direct" / "slack", "jira_mcp_merge" / "jira",
+    /// "confluence_mcp_merge" / "confluence",
+    /// "microsoft_teams_mcp_merge" / "teams", "onedrive", "sharepoint",
+    /// "dropbox", "box", "hugging_face" / "huggingface".
+    /// Unknown connector IDs are passed through unchanged.
     /// Defaults to ["web"] if not specified.
     #[serde(default)]
     pub sources: Option<Vec<String>>,
@@ -64,10 +68,14 @@ pub struct PerplexityRequest {
 
     /// Information sources to search.
     /// Standard (no auth): "web", "scholar", "social".
-    /// Connectors (require auth + connected account): "google_drive", "gcal",
-    /// "outlook", "notion_mcp", "github_mcp_direct", "linear_alt",
-    /// "slack_direct", "jira_mcp_merge", "confluence_mcp_merge",
-    /// "microsoft_teams_mcp_merge", "onedrive", "sharepoint", "dropbox", "box".
+    /// Connectors (require auth + connected account): "google_drive",
+    /// "gcal" / "google_calendar", "outlook", "notion_mcp" / "notion",
+    /// "github_mcp_direct" / "github", "linear_alt" / "linear",
+    /// "slack_direct" / "slack", "jira_mcp_merge" / "jira",
+    /// "confluence_mcp_merge" / "confluence",
+    /// "microsoft_teams_mcp_merge" / "teams", "onedrive", "sharepoint",
+    /// "dropbox", "box", "hugging_face" / "huggingface".
+    /// Unknown connector IDs are passed through unchanged.
     /// Defaults to ["web"] if not specified.
     #[serde(default)]
     pub sources: Option<Vec<String>>,
@@ -117,6 +125,20 @@ pub struct FollowUpInfo {
 pub struct SearchOnlyResponse {
     /// Web search results with titles, URLs, and snippets.
     pub web_results: Vec<SearchWebResult>,
+}
+
+/// Request parameters for `perplexity_view_chat`.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct PerplexityViewChatRequest {
+    /// Perplexity search/chat URL or thread UUID/slug.
+    /// Examples: "https://www.perplexity.ai/search/3b060972-a099-4264-b392-096fb2a3bdf9",
+    /// "3b060972-a099-4264-b392-096fb2a3bdf9".
+    pub url_or_id: String,
+
+    /// Optional specific question or prompt about the thread.
+    /// Defaults to asking for a complete breakdown of all questions and answers in the thread.
+    #[serde(default)]
+    pub query: Option<String>,
 }
 
 /// MCP server wrapping Perplexity AI client.
@@ -508,7 +530,9 @@ impl PerplexityServer {
                 Best for: multi-step tasks, data analysis with connectors (Google Drive, Calendar, Notion, GitHub), \
                 web automation, and tasks requiring tool use. \
                 Requires authentication tokens. Significantly slower than other tools (30+ seconds). \
-                Sources can include connected services like google_drive, gcal, notion_mcp, github_mcp_direct, etc. \
+                Sources can include connected services like google_drive, gcal / google_calendar, \
+                notion_mcp / notion, github_mcp_direct / github, hugging_face / huggingface, etc. \
+                Unknown connector IDs are passed through unchanged. \
                 Supports optional file attachments via the `files` parameter.",
         annotations(
             title = "Perplexity Computer",
@@ -620,6 +644,73 @@ impl PerplexityServer {
         })?;
         to_json_tool_result(&limits)
     }
+
+    /// View, extract, or summarize the contents of a Perplexity chat / search link or thread.
+    ///
+    /// Accepts a full Perplexity URL (e.g. `https://www.perplexity.ai/search/3b060972-a099-4264-b392-096fb2a3bdf9`)
+    /// or a thread UUID / slug, and retrieves the full thread breakdown and answers.
+    #[tool(
+        name = "perplexity_view_chat",
+        description = "View, extract, or summarize the contents of a Perplexity chat / search link or thread. \
+                Pass a Perplexity search link (e.g., 'https://www.perplexity.ai/search/3b060972-a099-4264-b392-096fb2a3bdf9') \
+                or thread UUID/slug, and optionally a specific question about the thread. \
+                Uses Perplexity's follow-up mechanism, so the query may appear as a new turn in that thread. \
+                Requires authentication tokens (PERPLEXITY_SESSION_TOKEN).",
+        annotations(
+            title = "View Perplexity Chat",
+            read_only_hint = false,
+            open_world_hint = true,
+            destructive_hint = false,
+            idempotent_hint = false
+        )
+    )]
+    pub async fn perplexity_view_chat(
+        &self,
+        Parameters(params): Parameters<PerplexityViewChatRequest>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        if self.tokenless {
+            return Err(McpError::invalid_params(
+                "perplexity_view_chat requires authentication. Set PERPLEXITY_SESSION_TOKEN.",
+                None,
+            ));
+        }
+
+        let uuid_or_slug = perplexity_web_api::extract_thread_uuid_or_slug(&params.url_or_id);
+        let query_text = params.query.unwrap_or_else(|| {
+            "List each question asked in this thread and provide the full detailed answer given for each."
+                .to_string()
+        });
+
+        let follow_up = perplexity_web_api::FollowUpContext {
+            backend_uuid: Some(uuid_or_slug),
+            attachments: Vec::new(),
+        };
+
+        let mut request = SearchRequest::new(query_text)
+            .mode(SearchMode::Pro)
+            .follow_up(follow_up)
+            .incognito(self.incognito);
+
+        if let Some(ask_model) = self.ask_model {
+            request = request.model(ask_model);
+        }
+
+        let _heartbeat = ProgressHeartbeat::start(&context, self.progress_interval);
+
+        let response = self.client.search(request).await.map_err(|e| {
+            McpError::internal_error(format!("Perplexity API error: {}", e), None)
+        })?;
+
+        to_json_tool_result(&PerplexityResponse {
+            answer: response.answer,
+            web_results: response.web_results,
+            follow_up: FollowUpInfo {
+                backend_uuid: response.follow_up.backend_uuid,
+                attachments: response.follow_up.attachments,
+            },
+        })
+    }
 }
 
 #[tool_handler]
@@ -638,10 +729,15 @@ impl ServerHandler for PerplexityServer {
                 Use perplexity_computer for agentic tasks with tool use and connected services. \
                 Use perplexity_study for tutor-style step-by-step explanations. \
                 Use perplexity_document_review for detailed analysis of uploaded documents. \
+                Use perplexity_view_chat to view or summarize a shared Perplexity search link or thread by URL or UUID. \
                 All tools accept a `sources` parameter for connector-scoped queries: \
                 standard sources (web, scholar, social) work without auth; \
-                connectors (google_drive, gcal, outlook, notion_mcp, github_mcp_direct, etc.) \
-                require authentication and a connected account. \
+                connectors (google_drive, gcal / google_calendar, outlook, notion_mcp / notion, \
+                github_mcp_direct / github, linear_alt / linear, slack_direct / slack, \
+                jira_mcp_merge / jira, confluence_mcp_merge / confluence, \
+                microsoft_teams_mcp_merge / teams, hugging_face / huggingface, etc.) \
+                require authentication and a connected account, and unknown connector IDs are \
+                passed through unchanged. \
                 All tools support an optional `files` parameter for document analysis: \
                 pass an array of objects each with `filename` and either `text` (plain-text content) \
                 or `data` (base64-encoded binary content, e.g. for PDFs).",

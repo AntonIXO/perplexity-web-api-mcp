@@ -97,6 +97,48 @@ fn extract_string_array(content: &Map<String, Value>, key: &str) -> Vec<String> 
         .unwrap_or_default()
 }
 
+/// Extracts a thread UUID or slug from a Perplexity search/chat URL or ID string.
+///
+/// Handles URLs such as:
+/// - `https://www.perplexity.ai/search/3b060972-a099-4264-b392-096fb2a3bdf9`
+/// - `https://www.perplexity.ai/search/some-topic-3b060972-a099-4264-b392-096fb2a3bdf9?s=u`
+/// - `https://www.perplexity.ai/page/some-page-slug`
+/// - Raw UUID: `3b060972-a099-4264-b392-096fb2a3bdf9`
+pub fn extract_thread_uuid_or_slug(url_or_id: &str) -> String {
+    let trimmed = url_or_id.trim();
+    let clean = trimmed
+        .split('#')
+        .next()
+        .unwrap_or(trimmed)
+        .split('?')
+        .next()
+        .unwrap_or(trimmed)
+        .trim_end_matches('/');
+
+    let segment = if clean.starts_with("http://")
+        || clean.starts_with("https://")
+        || clean.contains("perplexity.ai")
+    {
+        clean.rsplit('/').next().unwrap_or(clean)
+    } else {
+        clean
+    };
+
+    if let Some(uuid) = extract_uuid_from_str(segment) { uuid } else { segment.to_string() }
+}
+
+fn extract_uuid_from_str(s: &str) -> Option<String> {
+    static UUID_RE: std::sync::OnceLock<regex_lite::Regex> = std::sync::OnceLock::new();
+    let re = UUID_RE.get_or_init(|| {
+        regex_lite::Regex::new(
+            r"(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+        )
+        .expect("valid regex")
+    });
+
+    re.find(s).map(|m| m.as_str().to_lowercase())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +262,31 @@ mod tests {
     fn test_parse_invalid_json() {
         let result = parse_sse_event("not json");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_thread_uuid_or_slug() {
+        assert_eq!(
+            extract_thread_uuid_or_slug(
+                "https://www.perplexity.ai/search/3b060972-a099-4264-b392-096fb2a3bdf9"
+            ),
+            "3b060972-a099-4264-b392-096fb2a3bdf9"
+        );
+        assert_eq!(
+            extract_thread_uuid_or_slug(
+                "https://www.perplexity.ai/search/some-topic-3b060972-a099-4264-b392-096fb2a3bdf9?s=u#top"
+            ),
+            "3b060972-a099-4264-b392-096fb2a3bdf9"
+        );
+        assert_eq!(
+            extract_thread_uuid_or_slug("3b060972-a099-4264-b392-096fb2a3bdf9"),
+            "3b060972-a099-4264-b392-096fb2a3bdf9"
+        );
+        assert_eq!(
+            extract_thread_uuid_or_slug(
+                "https://www.perplexity.ai/page/some-custom-page-slug"
+            ),
+            "some-custom-page-slug"
+        );
     }
 }

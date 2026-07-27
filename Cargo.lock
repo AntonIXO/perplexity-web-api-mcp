@@ -487,7 +487,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1199,13 +1199,14 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "perplexity-web-api"
-version = "0.0.0"
+version = "0.12.0"
 dependencies = [
  "bytes",
  "futures-util",
  "memchr",
  "mime_guess",
  "pin-project-lite",
+ "regex-lite",
  "rquest",
  "rquest-util",
  "schemars",
@@ -1218,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "perplexity-web-api-mcp"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "axum",
  "base64",
@@ -1379,6 +1380,12 @@ dependencies = [
  "memchr",
  "regex-syntax",
 ]
+
+[[package]]
+name = "regex-lite"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
 
 [[package]]
 name = "regex-syntax"
