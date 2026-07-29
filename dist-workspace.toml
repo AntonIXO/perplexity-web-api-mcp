@@ -17,6 +17,10 @@ install-path = "CARGO_HOME"
 install-updater = false
 # Publish jobs to run in CI
 publish-jobs = ["npm"]
+# Publish the fork under the npm account scope; the unscoped package belongs
+# to the upstream repository.
+npm-scope = "@antonlx"
+npm-package = "perplexity-web-api-mcp"
 
 # Windows build dependencies for BoringSSL (via rquest crate)
 [dist.dependencies.chocolatey]
