@@ -1,20 +1,22 @@
 # Perplexity Web API MCP Server
 
 <p>
-    <a href="https://cursor.com/en/install-mcp?name=perplexity-web&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInBlcnBsZXhpdHktd2ViLWFwaS1tY3AiXSwiZW52Ijp7IlBFUlBMRVhJVFlfU0VTU0lPTl9UT0tFTiI6IiJ9fQ==" target="_blank">
+    <a href="https://cursor.com/en/install-mcp?name=perplexity-web&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBhbnRvbmx4L3BlcnBsZXhpdHktd2ViLWFwaS1tY3AiXSwiZW52Ijp7IlBFUlBMRVhJVFlfU0VTU0lPTl9UT0tFTiI6IiJ9fQ==" target="_blank">
         <img src="https://custom-icon-badges.demolab.com/badge/Install_in_Cursor-000000?style=for-the-badge&logo=cursor-ai-white" alt="Install in Cursor">
     </a>
-    <a href="https://vscode.dev/redirect/mcp/install?name=perplexity-web&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22perplexity-web-api-mcp%22%5D%2C%22env%22%3A%7B%22PERPLEXITY_SESSION_TOKEN%22%3A%22%22%7D%7D" target="_blank">
+    <a href="https://vscode.dev/redirect/mcp/install?name=perplexity-web&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40antonlx%2Fperplexity-web-api-mcp%22%5D%2C%22env%22%3A%7B%22PERPLEXITY_SESSION_TOKEN%22%3A%22%22%7D%7D" target="_blank">
         <img src="https://custom-icon-badges.demolab.com/badge/Install_in_VS_Code-007ACC?style=for-the-badge&logo=vsc&logoColor=white" alt="Install in VS Code">
     </a>
-    <a href="https://www.npmjs.com/package/perplexity-web-api-mcp" target="_blank">
+    <a href="https://www.npmjs.com/package/@antonlx/perplexity-web-api-mcp" target="_blank">
         <img
-            src="https://img.shields.io/npm/v/perplexity-web-api-mcp?style=for-the-badge&logo=npm&logoColor=white&color=CB3837"
+            src="https://img.shields.io/npm/v/%40antonlx%2Fperplexity-web-api-mcp?style=for-the-badge&logo=npm&logoColor=white&color=CB3837"
             alt="NPM Version" />
     </a>
 </p>
 
 MCP (Model Context Protocol) server that exposes Perplexity AI search, research, and reasoning capabilities as tools.
+
+This repository is the [`AntonIXO` fork](https://github.com/AntonIXO/perplexity-web-api-mcp) of the [original project by `mishamyrt`](https://github.com/mishamyrt/perplexity-web-api-mcp). Fork releases are published as [`@antonlx/perplexity-web-api-mcp`](https://www.npmjs.com/package/@antonlx/perplexity-web-api-mcp).
 
 ## No API Key Required
 
@@ -43,6 +45,28 @@ For full access to all tools and model selection, provide your session token as 
 - macOS (arm64, x86_64)
 - Linux (x86_64, aarch64)
 - Windows (x86_64)
+
+## Installation
+
+For MCP clients, use the npm package directly (no global install required):
+
+```bash
+npx -y @antonlx/perplexity-web-api-mcp
+```
+
+To install the latest prebuilt binary on macOS or Linux:
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/AntonIXO/perplexity-web-api-mcp/releases/latest/download/perplexity-web-api-mcp-installer.sh | sh
+```
+
+On Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/AntonIXO/perplexity-web-api-mcp/releases/latest/download/perplexity-web-api-mcp-installer.ps1 | iex"
+```
+
+Platform archives and checksums are available on the [GitHub Releases page](https://github.com/AntonIXO/perplexity-web-api-mcp/releases/latest).
 
 ## Configuration
 
@@ -105,7 +129,7 @@ This server implements the server side of that contract:
 ### Claude Code
 
 ```bash
-claude mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" -- npx -y perplexity-web-api-mcp
+claude mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" -- npx -y @antonlx/perplexity-web-api-mcp
 ```
 
 ### Cursor, Claude Desktop & Windsurf
@@ -125,7 +149,7 @@ For manual setup, all these clients use the same `mcpServers` format:
   "mcpServers": {
     "perplexity": {
       "command": "npx",
-      "args": ["-y", "perplexity-web-api-mcp"],
+      "args": ["-y", "@antonlx/perplexity-web-api-mcp"],
       "env": {
         "PERPLEXITY_SESSION_TOKEN": "your-session-token"
       }
@@ -143,7 +167,7 @@ Add following following to `context_servers` in your [settings file](https://zed
   "context_servers": {
     "perplexity": {
       "command": "npx",
-      "args": ["-y", "perplexity-web-api-mcp"],
+      "args": ["-y", "@antonlx/perplexity-web-api-mcp"],
       "env": {
         "PERPLEXITY_SESSION_TOKEN": "your-session-token"
       }
@@ -162,7 +186,7 @@ I recommend using the one-click install badge at the top of this README for VS C
     "perplexity": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "perplexity-web-api-mcp"],
+      "args": ["-y", "@antonlx/perplexity-web-api-mcp"],
       "env": {
         "PERPLEXITY_SESSION_TOKEN": "your-session-token"
       }
@@ -174,7 +198,7 @@ I recommend using the one-click install badge at the top of this README for VS C
 ### Codex
 
 ```bash
-codex mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" -- npx -y perplexity-web-api-mcp
+codex mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" -- npx -y @antonlx/perplexity-web-api-mcp
 ```
 
 ### Building from Source
@@ -187,13 +211,15 @@ Most clients can be manually configured to use the `mcpServers` wrapper in their
 
 ## Docker
 
-A pre-built multi-arch image (`linux/amd64`, `linux/arm64`) is available on Docker Hub:
+Build the fork's image locally:
 
 ```bash
+docker build -t perplexity-web-api-mcp .
+
 docker run -d \
   -p 8080:8080 \
   -e PERPLEXITY_SESSION_TOKEN="your-session-token" \
-  mishamyrt/perplexity-web-api-mcp
+  perplexity-web-api-mcp
 ```
 
 The container exposes the MCP server via Streamable HTTP at `http://localhost:8080/mcp`.
