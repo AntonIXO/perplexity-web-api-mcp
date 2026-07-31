@@ -56,15 +56,58 @@ fn expand_text_field(content: &mut Map<String, Value>) {
 
 /// Extracts answer and web_results from the event content.
 ///
-/// Tries the FINAL step inside the "text" steps array first, then falls back
-/// to the top-level "answer" field (which carries no web_results).
+/// Tries the FINAL step inside the "text" steps array first (the older API
+/// shape), then the "blocks" array (the shape Perplexity switched to circa
+/// 2026-07), then falls back to the top-level "answer" field (no
+/// web_results).
 fn extract_answer_and_web_results(
     content: &Map<String, Value>,
 ) -> (Option<String>, Vec<SearchWebResult>) {
     if let Some(result) = extract_from_final_step(content) {
         return result;
     }
+    if let Some(result) = extract_from_blocks(content) {
+        return result;
+    }
     (extract_string(content, "answer"), Vec::new())
+}
+
+/// Extracts answer and web_results from the "blocks" array. Each block is
+/// either a `markdown_block` (the answer text, appended to across SSE
+/// events) or a `web_result_block` (the search results); other block kinds
+/// are ignored.
+fn extract_from_blocks(
+    content: &Map<String, Value>,
+) -> Option<(Option<String>, Vec<SearchWebResult>)> {
+    let blocks = content.get("blocks")?.as_array()?;
+    if blocks.is_empty() {
+        return None;
+    }
+
+    let mut answer = None;
+    let mut web_results = Vec::new();
+
+    for block in blocks {
+        if let Some(text) = block
+            .get("markdown_block")
+            .and_then(|md| md.get("answer"))
+            .and_then(|v| v.as_str())
+        {
+            answer = Some(text.to_string());
+        }
+        if let Some(results) =
+            block.get("web_result_block").and_then(|b| b.get("web_results"))
+        {
+            if let Ok(parsed) = serde_json::from_value::<Vec<SearchWebResult>>(results.clone()) {
+                web_results = parsed;
+            }
+        }
+    }
+
+    if answer.is_none() && web_results.is_empty() {
+        return None;
+    }
+    Some((answer, web_results))
 }
 
 /// Deserializes the "text" steps array and pulls answer + web_results from the
@@ -204,6 +247,76 @@ mod tests {
         // The "text" field should be parsed and stored in raw
         assert!(event.raw.get("text").is_some());
         assert!(event.raw.get("some_field").is_some());
+    }
+
+    #[test]
+    fn test_parse_event_with_blocks_shape() {
+        // Perplexity's current response shape (observed 2026-07): no "text"
+        // field at all, just a "blocks" array with markdown_block and
+        // web_result_block entries.
+        let json = serde_json::json!({
+            "blocks": [
+                {
+                    "intended_usage": "ask_text",
+                    "markdown_block": {
+                        "progress": "DONE",
+                        "chunks": [],
+                        "chunk_starting_offset": 0,
+                        "answer": "Paris."
+                    }
+                },
+                {
+                    "intended_usage": "web_results",
+                    "web_result_block": {
+                        "progress": "DONE",
+                        "web_results": [
+                            {
+                                "name": "Capital of France",
+                                "url": "https://example.com/paris",
+                                "snippet": "Paris is the capital of France.",
+                                "timestamp": "2026-01-01T00:00:00",
+                                "trust": true
+                            }
+                        ]
+                    }
+                }
+            ],
+            "final": true
+        });
+
+        let event = parse_sse_event(&json.to_string()).unwrap();
+
+        assert_eq!(event.answer, Some("Paris.".to_string()));
+        assert_eq!(event.web_results.len(), 1);
+        assert_eq!(event.web_results[0].name, "Capital of France");
+        assert_eq!(event.web_results[0].url, "https://example.com/paris");
+    }
+
+    #[test]
+    fn test_parse_event_blocks_shape_no_web_results() {
+        // A blocks-shape event with only a markdown_block (no web results
+        // surfaced yet, e.g. an early progress event in the stream).
+        let json = serde_json::json!({
+            "blocks": [
+                {
+                    "intended_usage": "ask_text",
+                    "markdown_block": {
+                        "progress": "INPROGRESS",
+                        "chunks": [],
+                        "chunk_starting_offset": 0,
+                        "answer": "The boiling point of water is 100"
+                    }
+                }
+            ]
+        });
+
+        let event = parse_sse_event(&json.to_string()).unwrap();
+
+        assert_eq!(
+            event.answer,
+            Some("The boiling point of water is 100".to_string())
+        );
+        assert!(event.web_results.is_empty());
     }
 
     #[test]
