@@ -15,7 +15,7 @@ license = "MIT"
 [workspace.dependencies]
 perplexity-web-api = { path = "crates/perplexity-web-api" }
 
-tokio = { version = "1.52.0", features = ["rt", "macros", "net"] }
+tokio = { version = "1.53.1", features = ["rt", "macros", "net"] }
 rquest = { version = "5.1.0", default-features = false, features = [
     "webpki-roots",
     "cookies",
@@ -24,25 +24,25 @@ rquest = { version = "5.1.0", default-features = false, features = [
     "multipart",
 ] }
 rquest-util = { version = "2.2.1", default-features = false, features = ["emulation"] }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
-uuid = { version = "1.23.0", features = ["v4"] }
-bytes = "1.11.1"
-memchr = "2.8.0"
-futures-util = "0.3.32"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+uuid = { version = "1.24.0", features = ["v4"] }
+bytes = "1.12.1"
+memchr = "2.8.3"
+futures-util = "0.3.33"
 mime_guess = "2.0.5"
 regex-lite = "0.1.9"
 base64 = "0.22"
-thiserror = "2.0.18"
+thiserror = "2.0.19"
 pin-project-lite = "0.2.17"
-rmcp = { version = "1.4.0", default-features = false, features = [
+rmcp = { version = "1.8.0", default-features = false, features = [
     "server",
     "macros",
     "transport-io",
     "schemars",
 ] }
 axum = { version = "0.8.9", default-features = false, features = ["tokio", "http1"] }
-schemars = "1.2.1"
+schemars = "1.2.2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt"] }
 
