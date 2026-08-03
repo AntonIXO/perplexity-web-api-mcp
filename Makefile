@@ -1,4 +1,4 @@
-VERSION := 0.12.1
+VERSION := 0.12.2
 
 .PHONY: publish test-unit test-e2e test inspect
 

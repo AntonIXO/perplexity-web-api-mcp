@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.2](https://github.com/AntonIXO/perplexity-web-api-mcp/compare/v0.12.1..v0.12.2) - 2026-08-03
+
+### 🐛 Bug Fixes
+
+- Parse Perplexity SSE `blocks` response shape (`markdown_block` + `web_result_block`); keep legacy `text`/FINAL path first so older payloads still work ([#2](https://github.com/AntonIXO/perplexity-web-api-mcp/pull/2))
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump workspace deps: rmcp 1.8, tokio 1.53, serde 1.0.229, serde_json 1.0.151, uuid/bytes/memchr/futures/thiserror/schemars
+- Note: `rquest` remains pinned via Cargo.lock — every crates.io version is yanked after rename to `wreq` (migration deferred)
+
 ## [0.11.0](https://github.com/mishamyrt/perplexity-web-api-mcp/compare/v0.10.0..v0.11.0) - 2026-04-08
 
 ### 🚀 Features
