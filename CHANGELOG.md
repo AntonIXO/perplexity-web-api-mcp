@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.3](https://github.com/AntonIXO/perplexity-web-api-mcp/compare/v0.12.2..v0.12.3) - 2026-08-17
+
+### 🚀 Features
+
+- Add direct REST API thread reading (`read_thread`) without synthetic AI search queries
+- Add UUID extraction support for `/computer/tasks/<UUID>` URLs in `extract_thread_uuid_or_slug`
+
+### 🚜 Refactor
+
+- Completely remove synthetic follow-up query system from `perplexity_view_chat` in favor of direct API thread reading
+
 ## [0.12.2](https://github.com/AntonIXO/perplexity-web-api-mcp/compare/v0.12.1..v0.12.2) - 2026-08-03
 
 ### 🐛 Bug Fixes

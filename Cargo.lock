@@ -1197,7 +1197,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "perplexity-web-api"
-version = "0.12.2"
+version = "0.12.3"
 dependencies = [
  "bytes",
  "futures-util",
@@ -1217,7 +1217,7 @@ dependencies = [
 
 [[package]]
 name = "perplexity-web-api-mcp"
-version = "0.12.2"
+version = "0.12.3"
 dependencies = [
  "axum",
  "base64",
