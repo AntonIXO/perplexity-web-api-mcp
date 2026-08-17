@@ -37,6 +37,7 @@ pub(crate) async fn upload_files(
     http: &HttpClient,
     files: &[&UploadFile],
     timeout: Duration,
+    account_id: Option<&str>,
 ) -> Result<Vec<String>> {
     if files.is_empty() {
         return Ok(Vec::new());
@@ -48,7 +49,7 @@ pub(crate) async fn upload_files(
         files.iter().map(|f| (Uuid::new_v4().to_string(), *f)).collect();
 
     // Step 1: obtain presigned upload fields for all files at once
-    let batch_resp = request_upload_urls(http, &keyed, timeout).await?;
+    let batch_resp = request_upload_urls(http, &keyed, timeout, account_id).await?;
 
     // Collect per-file metadata preserving original order
     let file_metas: Vec<(BatchUploadFileMeta, &BatchUploadFileResults, &UploadFile)> = keyed
@@ -77,7 +78,7 @@ pub(crate) async fn upload_files(
 
     // Step 3: wait for server-side attachment processing
     let file_uuids: Vec<String> = file_metas.iter().map(|(m, _, _)| m.uuid.clone()).collect();
-    wait_for_processing(http, &file_uuids, timeout).await?;
+    wait_for_processing(http, &file_uuids, timeout, account_id).await?;
 
     let urls = file_metas.into_iter().map(|(m, _, _)| m.s3_object_url).collect();
     Ok(urls)
@@ -88,6 +89,7 @@ async fn request_upload_urls(
     http: &HttpClient,
     keyed: &[(String, &UploadFile)],
     timeout: Duration,
+    account_id: Option<&str>,
 ) -> Result<BatchUploadFileResponse> {
     let mut files = HashMap::with_capacity(keyed.len());
     for (client_uuid, file) in keyed {
@@ -111,8 +113,7 @@ async fn request_upload_urls(
         "{API_BASE_URL}{ENDPOINT_BATCH_UPLOAD_URL}?version={API_VERSION}&source=default"
     );
 
-    let fut = http
-        .post(&full_url)
+    let fut = crate::client::with_account(http.post(&full_url), account_id)
         .header(ORIGIN, PERPLEXITY_ORIGIN)
         .header(REFERER, PERPLEXITY_REFERER)
         .header("x-app-apiclient", "default")
@@ -173,11 +174,14 @@ async fn wait_for_processing(
     http: &HttpClient,
     file_uuids: &[String],
     timeout: Duration,
+    account_id: Option<&str>,
 ) -> Result<()> {
     let body = ProcessingSubscribeRequest { file_uuids: file_uuids.to_vec() };
 
-    let sse_fut = http
-        .post(format!("{API_BASE_URL}{ENDPOINT_ATTACHMENT_PROCESSING}"))
+    let sse_fut = crate::client::with_account(
+        http.post(format!("{API_BASE_URL}{ENDPOINT_ATTACHMENT_PROCESSING}")),
+        account_id,
+    )
         .header("Accept", "text/event-stream")
         .header(ORIGIN, PERPLEXITY_ORIGIN)
         .header(REFERER, PERPLEXITY_REFERER)

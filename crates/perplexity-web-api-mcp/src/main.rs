@@ -175,7 +175,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut builder = Client::builder();
     if let Some(session) = session_token {
-        builder = builder.cookies(AuthCookies::new(session));
+        let mut auth = AuthCookies::new(session);
+        // Perplexity moved from NextAuth to per-account session cookies named
+        // `__Secure-pplx.session.<account-uuid>`, so the name is deployment
+        // specific and has to be configurable.
+        if let Some(cookie_name) = optional_env("PERPLEXITY_SESSION_COOKIE_NAME")? {
+            tracing::info!("Using session cookie name {}", cookie_name);
+            auth = auth.with_cookie_name(cookie_name);
+        }
+        builder = builder.cookies(auth);
     }
     // Optional timeout overrides. Long-running modes (Deep Research, Computer,
     // Document Review) use the larger `long_timeout` budget so they aren't
@@ -193,6 +201,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     tracing::info!("Perplexity client initialized");
+
+    // `--check` is a health probe for the launcher script. A plain curl cannot
+    // stand in for it: the API sits behind a bot filter that only the emulated
+    // client gets past. Prints the remaining Pro quota and exits — nonzero when
+    // the session is being treated as anonymous.
+    if env::args().any(|a| a == "--check") {
+        return match client.rate_limits().await {
+            Ok(limits) if limits.remaining_pro > 0 => {
+                println!("ok remaining_pro={}", limits.remaining_pro);
+                Ok(())
+            }
+            Ok(limits) => {
+                println!("anonymous remaining_pro={}", limits.remaining_pro);
+                std::process::exit(1);
+            }
+            Err(e) => {
+                println!("error {e}");
+                std::process::exit(1);
+            }
+        };
+    }
 
     // How often to emit `notifications/progress` heartbeats during long-running
     // tool calls (only sent when the client supplied a `progressToken`).

@@ -27,6 +27,49 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// before the stream completes, so the short default would abort it prematurely.
 const DEFAULT_LONG_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Prefix of the per-account session cookie Perplexity switched to.
+const PPLX_SESSION_COOKIE_PREFIX: &str = "__Secure-pplx.session.";
+
+/// Header naming the active account for the request.
+///
+/// Perplexity supports several signed-in accounts at once, one
+/// `__Secure-pplx.session.<account-uuid>` cookie each. Without this header the
+/// backend cannot tell which session to resolve and answers anonymously — a
+/// silent downgrade, not an error.
+const ACCOUNT_HEADER: &str = "x-pplx-account";
+
+/// Extracts the account UUID from a per-account session cookie name.
+fn account_id_from_cookie_name(name: &str) -> Option<&str> {
+    name.strip_prefix(PPLX_SESSION_COOKIE_PREFIX).filter(|id| !id.is_empty())
+}
+
+/// Adds the active-account header to a request when one is configured.
+pub(crate) fn with_account(
+    request: rquest::RequestBuilder,
+    account_id: Option<&str>,
+) -> rquest::RequestBuilder {
+    match account_id {
+        Some(id) => request.header(ACCOUNT_HEADER, id),
+        None => request,
+    }
+}
+
+/// Builds a `Set-Cookie`-style string for the jar, honouring the cookie name
+/// prefixes browsers enforce.
+///
+/// `__Secure-` requires the `Secure` attribute, `__Host-` additionally forbids
+/// `Domain` and demands `Path=/`. Perplexity's current session cookie uses the
+/// `__Secure-` prefix, so a plain `name=value; Domain=...; Path=/` string would
+/// be rejected by a conforming cookie store and the request would go out
+/// unauthenticated.
+fn cookie_str(name: &str, value: &str) -> String {
+    if name.starts_with("__Host-") {
+        format!("{name}={value}; Path=/; Secure")
+    } else {
+        format!("{name}={value}; Domain=www.perplexity.ai; Path=/; Secure")
+    }
+}
+
 /// Builder for creating a configured [`Client`] instance.
 pub struct ClientBuilder {
     cookies: Option<AuthCookies>,
@@ -89,6 +132,28 @@ impl ClientBuilder {
         let Self { cookies, http_client, timeout, long_timeout } = self;
         let has_cookies = cookies.is_some();
 
+        // Name the account this session belongs to. Perplexity keeps one
+        // `__Secure-pplx.session.<uuid>` cookie per signed-in account; without the
+        // header the backend cannot pick one and answers anonymously instead of
+        // failing, which reads as a valid but empty response.
+        //
+        // It has to travel per request: `default_headers` swaps out the whole
+        // header map the emulation installed, and the resulting bare request is
+        // rejected by the bot filter in front of the API.
+        let account_id = if std::env::var("PERPLEXITY_NO_ACCOUNT_HEADER").is_ok() {
+            None
+        } else {
+            std::env::var("PERPLEXITY_ACCOUNT_ID").ok().or_else(|| {
+                cookies
+                    .as_ref()
+                    .and_then(|auth| account_id_from_cookie_name(auth.session_cookie_name()))
+                    .map(|id| id.to_owned())
+            })
+        };
+        if std::env::var("PERPLEXITY_DEBUG_COOKIES").is_ok() {
+            eprintln!("[debug] account header: {account_id:?}");
+        }
+
         let http = match http_client {
             Some(client) => {
                 if cookies.is_some() {
@@ -102,8 +167,19 @@ impl ClientBuilder {
 
                 if let Some(auth) = &cookies {
                     let (name, value) = auth.session_cookie_pair();
-                    let cookie = format!("{name}={value}; Domain=www.perplexity.ai; Path=/");
-                    jar.add_cookie_str(&cookie, &url);
+                    jar.add_cookie_str(&cookie_str(name, value), &url);
+                    if std::env::var("PERPLEXITY_DEBUG_COOKIES").is_ok() {
+                        use rquest::cookie::CookieStore;
+                        let names: Vec<String> = jar
+                            .cookies(&url)
+                            .and_then(|h| h.to_str().ok().map(|s| s.to_owned()))
+                            .unwrap_or_default()
+                            .split(';')
+                            .filter_map(|p| p.split('=').next().map(|n| n.trim().to_owned()))
+                            .filter(|n| !n.is_empty())
+                            .collect();
+                        eprintln!("[debug] jar cookies for {url}: {names:?}");
+                    }
                 }
 
                 let http = HttpClient::builder()
@@ -112,27 +188,44 @@ impl ClientBuilder {
                     .build()
                     .map_err(Error::HttpClientInit)?;
 
-                if cookies.is_some() {
+                // `/api/auth/csrf` is a NextAuth leftover. Accounts on the newer
+                // per-account cookie scheme no longer get a JSON body there, so
+                // asking for one aborts startup for no gain.
+                if cookies.is_some() && account_id.is_none() {
                     let csrf_token = Self::fetch_csrf_token(&http, timeout).await?;
-                    let cookie = format!(
-                        "{}={}; Domain=www.perplexity.ai; Path=/",
-                        CSRF_TOKEN_COOKIE_NAME, csrf_token
+                    jar.add_cookie_str(
+                        &cookie_str(CSRF_TOKEN_COOKIE_NAME, &csrf_token),
+                        &url,
                     );
-                    jar.add_cookie_str(&cookie, &url);
                 }
 
                 http
             }
         };
 
-        let session_fut =
-            http.get(format!("{}{}", API_BASE_URL, ENDPOINT_AUTH_SESSION)).send();
-        tokio::time::timeout(timeout, session_fut)
+        let session_fut = with_account(
+            http.get(format!("{}{}", API_BASE_URL, ENDPOINT_AUTH_SESSION)),
+            account_id.as_deref(),
+        )
+        .send();
+        let warmup = tokio::time::timeout(timeout, session_fut)
             .await
             .map_err(|_| Error::Timeout(timeout))?
             .map_err(Error::SessionWarmup)?;
 
-        Ok(Client { http, has_cookies, timeout, long_timeout })
+        if std::env::var("PERPLEXITY_DEBUG_COOKIES").is_ok() {
+            let status = warmup.status();
+            let set_cookie: Vec<String> = warmup
+                .headers()
+                .get_all("set-cookie")
+                .iter()
+                .filter_map(|v| v.to_str().ok())
+                .filter_map(|s| s.split('=').next().map(|n| n.to_owned()))
+                .collect();
+            eprintln!("[debug] warmup {ENDPOINT_AUTH_SESSION} -> {status}, set-cookie: {set_cookie:?}");
+        }
+
+        Ok(Client { http, has_cookies, timeout, long_timeout, account_id })
     }
 
     /// Fetches the CSRF token from `/api/auth/csrf`.
@@ -184,6 +277,7 @@ pub struct Client {
     has_cookies: bool,
     timeout: Duration,
     long_timeout: Duration,
+    account_id: Option<String>,
 }
 
 impl Client {
@@ -235,7 +329,7 @@ impl Client {
         self.check_quota_for_mode(request.mode).await?;
 
         let file_refs: Vec<&UploadFile> = request.files.iter().collect();
-        let mut attachments = upload_files(&self.http, &file_refs, self.timeout).await?;
+        let mut attachments = upload_files(&self.http, &file_refs, self.timeout, self.account_id.as_deref()).await?;
 
         if let Some(ref follow_up) = request.follow_up {
             attachments.extend(follow_up.attachments.clone());
@@ -277,11 +371,12 @@ impl Client {
             },
         };
 
-        let request_fut = self
-            .http
-            .post(format!("{}{}", API_BASE_URL, ENDPOINT_SSE_ASK))
-            .json(&payload)
-            .send();
+        let request_fut = with_account(
+            self.http.post(format!("{}{}", API_BASE_URL, ENDPOINT_SSE_ASK)),
+            self.account_id.as_deref(),
+        )
+        .json(&payload)
+        .send();
 
         // Long-running modes (Deep Research, Computer, Document Review) can hold
         // the connection open for minutes; give them the larger timeout budget
@@ -311,7 +406,7 @@ impl Client {
         if !files.is_empty() && !self.has_cookies {
             return Err(Error::FileUploadRequiresAuth);
         }
-        upload_files(&self.http, files, self.timeout).await
+        upload_files(&self.http, files, self.timeout, self.account_id.as_deref()).await
     }
 
     /// Fetches the current rate-limit / usage-quota status.
@@ -324,7 +419,11 @@ impl Client {
             return Err(Error::RateLimitRequiresAuth);
         }
 
-        let fut = self.http.get(format!("{}{}", API_BASE_URL, ENDPOINT_RATE_LIMITS)).send();
+        let fut = with_account(
+            self.http.get(format!("{}{}", API_BASE_URL, ENDPOINT_RATE_LIMITS)),
+            self.account_id.as_deref(),
+        )
+        .send();
         let response = tokio::time::timeout(self.timeout, fut)
             .await
             .map_err(|_| Error::Timeout(self.timeout))?
