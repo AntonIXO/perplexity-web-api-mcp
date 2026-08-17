@@ -191,7 +191,12 @@ impl Client {
         ClientBuilder::new()
     }
 
-    /// Performs a search query and returns the final response.
+    /// Returns a reference to the underlying HTTP client.
+    pub fn http(&self) -> &HttpClient {
+        &self.http
+    }
+
+    /// Performs a search query and returns the complete response.
     ///
     /// This method consumes the entire SSE stream and returns the final result.
     /// For streaming responses, use [`search_stream`](Self::search_stream) instead.

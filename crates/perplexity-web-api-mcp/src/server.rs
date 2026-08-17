@@ -678,7 +678,7 @@ impl PerplexityServer {
 
         let uuid_or_slug = perplexity_web_api::extract_thread_uuid_or_slug(&params.url_or_id);
         let query_text = params.query.unwrap_or_else(|| {
-            "List each question asked in this thread and provide the full detailed answer given for each."
+            "Provide a complete, detailed summary and transcript of this thread, including all user questions, key findings, data tables, recommendations, and answers provided."
                 .to_string()
         });
 

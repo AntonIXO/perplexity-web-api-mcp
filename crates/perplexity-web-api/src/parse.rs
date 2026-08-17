@@ -140,10 +140,11 @@ fn extract_string_array(content: &Map<String, Value>, key: &str) -> Vec<String> 
         .unwrap_or_default()
 }
 
-/// Extracts a thread UUID or slug from a Perplexity search/chat URL or ID string.
+/// Extracts a thread UUID or slug from a Perplexity search/chat/computer task URL or ID string.
 ///
 /// Handles URLs such as:
 /// - `https://www.perplexity.ai/search/3b060972-a099-4264-b392-096fb2a3bdf9`
+/// - `https://www.perplexity.ai/computer/tasks/69199f18-ff90-4db6-ba24-adccd51abc74`
 /// - `https://www.perplexity.ai/search/some-topic-3b060972-a099-4264-b392-096fb2a3bdf9?s=u`
 /// - `https://www.perplexity.ai/page/some-page-slug`
 /// - Raw UUID: `3b060972-a099-4264-b392-096fb2a3bdf9`
@@ -158,6 +159,10 @@ pub fn extract_thread_uuid_or_slug(url_or_id: &str) -> String {
         .unwrap_or(trimmed)
         .trim_end_matches('/');
 
+    if let Some(uuid) = extract_uuid_from_str(clean) {
+        return uuid;
+    }
+
     let segment = if clean.starts_with("http://")
         || clean.starts_with("https://")
         || clean.contains("perplexity.ai")
@@ -167,7 +172,7 @@ pub fn extract_thread_uuid_or_slug(url_or_id: &str) -> String {
         clean
     };
 
-    if let Some(uuid) = extract_uuid_from_str(segment) { uuid } else { segment.to_string() }
+    segment.to_string()
 }
 
 fn extract_uuid_from_str(s: &str) -> Option<String> {
@@ -394,6 +399,12 @@ mod tests {
         assert_eq!(
             extract_thread_uuid_or_slug("3b060972-a099-4264-b392-096fb2a3bdf9"),
             "3b060972-a099-4264-b392-096fb2a3bdf9"
+        );
+        assert_eq!(
+            extract_thread_uuid_or_slug(
+                "https://www.perplexity.ai/computer/tasks/69199f18-ff90-4db6-ba24-adccd51abc74"
+            ),
+            "69199f18-ff90-4db6-ba24-adccd51abc74"
         );
         assert_eq!(
             extract_thread_uuid_or_slug(
