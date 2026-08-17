@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::types::{SearchEvent, SearchWebResult};
+use crate::types::{SearchEvent, SearchResponse, SearchWebResult};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -138,6 +138,55 @@ fn extract_string_array(content: &Map<String, Value>, key: &str) -> Vec<String> 
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
         .unwrap_or_default()
+}
+
+/// Parses a direct thread REST API response JSON into a SearchResponse.
+pub fn parse_thread_response(json_val: &Value) -> Result<SearchResponse> {
+    let obj = json_val.as_object().ok_or_else(|| Error::Custom("Invalid JSON response".to_string()))?;
+
+    let mut answer_parts = Vec::new();
+    let mut web_results = Vec::new();
+
+    // Check for messages / entries array
+    if let Some(entries) = obj.get("entries").or_else(|| obj.get("messages")).and_then(|v| v.as_array()) {
+        for (idx, entry) in entries.iter().enumerate() {
+            if let Some(query) = entry.get("query_str").or_else(|| entry.get("question")).and_then(|v| v.as_str()) {
+                answer_parts.push(format!("### Turn {}\n**User:** {}\n", idx + 1, query));
+            }
+            if let Some(ans) = entry.get("answer").and_then(|v| v.as_str()) {
+                answer_parts.push(format!("**Answer:** {}\n", ans));
+            }
+        }
+    } else {
+        // Fall back to top-level answer/text extraction
+        let (ans, wr) = extract_answer_and_web_results(obj);
+        if let Some(a) = ans {
+            answer_parts.push(a);
+        }
+        web_results = wr;
+    }
+
+    let backend_uuid = extract_string(obj, "backend_uuid")
+        .or_else(|| extract_string(obj, "uuid"))
+        .or_else(|| extract_string(obj, "id"));
+
+    let attachments = extract_string_array(obj, "attachments");
+
+    let full_answer = if answer_parts.is_empty() {
+        None
+    } else {
+        Some(answer_parts.join("\n"))
+    };
+
+    Ok(SearchResponse {
+        answer: full_answer,
+        web_results,
+        follow_up: crate::types::FollowUpContext {
+            backend_uuid,
+            attachments,
+        },
+        raw: json_val.clone(),
+    })
 }
 
 /// Extracts a thread UUID or slug from a Perplexity search/chat/computer task URL or ID string.

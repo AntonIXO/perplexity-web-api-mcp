@@ -677,29 +677,10 @@ impl PerplexityServer {
         }
 
         let uuid_or_slug = perplexity_web_api::extract_thread_uuid_or_slug(&params.url_or_id);
-        let query_text = params.query.unwrap_or_else(|| {
-            "Provide a complete, detailed summary and transcript of this thread, including all user questions, key findings, data tables, recommendations, and answers provided."
-                .to_string()
-        });
-
-        let follow_up = perplexity_web_api::FollowUpContext {
-            backend_uuid: Some(uuid_or_slug),
-            attachments: Vec::new(),
-        };
-
-        let mut request = SearchRequest::new(query_text)
-            .mode(SearchMode::Pro)
-            .follow_up(follow_up)
-            .incognito(self.incognito);
-
-        if let Some(ask_model) = self.ask_model {
-            request = request.model(ask_model);
-        }
-
         let _heartbeat = ProgressHeartbeat::start(&context, self.progress_interval);
 
-        let response = self.client.search(request).await.map_err(|e| {
-            McpError::internal_error(format!("Perplexity API error: {}", e), None)
+        let response = self.client.read_thread(&uuid_or_slug).await.map_err(|e| {
+            McpError::internal_error(format!("Perplexity API error reading thread content: {}", e), None)
         })?;
 
         to_json_tool_result(&PerplexityResponse {

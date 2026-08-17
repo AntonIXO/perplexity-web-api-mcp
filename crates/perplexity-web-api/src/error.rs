@@ -113,6 +113,10 @@ pub enum Error {
         /// Remaining queries for that feature (0 when exhausted).
         remaining: i64,
     },
+
+    /// Generic error with custom message.
+    #[error("{0}")]
+    Custom(String),
 }
 
 /// Convenience Result type for this crate.

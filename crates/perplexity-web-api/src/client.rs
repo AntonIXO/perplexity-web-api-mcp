@@ -1,9 +1,10 @@
 use crate::auth::{AuthCookies, CSRF_TOKEN_COOKIE_NAME};
 use crate::config::{
-    API_BASE_URL, API_MODE_CONCISE, API_MODE_COPILOT, API_VERSION, ENDPOINT_AUTH_CSRF,
+    API_BASE_URL, API_MODE_CONCISE, API_MODE_COPILOT, API_REFERER, API_VERSION, ENDPOINT_AUTH_CSRF,
     ENDPOINT_AUTH_SESSION, ENDPOINT_RATE_LIMITS, ENDPOINT_SSE_ASK,
 };
 use crate::error::{Error, Result};
+use crate::parse::extract_thread_uuid_or_slug;
 use crate::rate_limit::RateLimits;
 use crate::sse::SseStream;
 use crate::types::{
@@ -370,6 +371,52 @@ impl Client {
             // failed (network blip, endpoint change) — proceed with the request.
             Err(_) => Ok(()),
         }
+    }
+
+    /// Fetches existing thread / task details directly via API without generating a new search query.
+    pub async fn read_thread(&self, uuid_or_slug: &str) -> Result<SearchResponse> {
+        let clean_uuid = extract_thread_uuid_or_slug(uuid_or_slug);
+
+        let endpoints = vec![
+            format!("{}/rest/threads/by_slug_or_id/{}?version={}&source=default", API_BASE_URL, clean_uuid, API_VERSION),
+            format!("{}/rest/threads/{}?version={}", API_BASE_URL, clean_uuid, API_VERSION),
+            format!("{}/rest/tasks/by_slug_or_id/{}?version={}", API_BASE_URL, clean_uuid, API_VERSION),
+        ];
+
+        let mut last_err = None;
+
+        for ep in endpoints {
+            let fut = self
+                .http
+                .get(&ep)
+                .header("Referer", API_REFERER)
+                .header("Accept", "application/json, text/plain, */*")
+                .header("x-perplexity-version", API_VERSION)
+                .send();
+
+            match tokio::time::timeout(self.timeout, fut).await {
+                Ok(Ok(response)) => {
+                    if response.status().is_success() {
+                        if let Ok(json_val) = response.json::<serde_json::Value>().await {
+                            return crate::parse::parse_thread_response(&json_val);
+                        }
+                    } else {
+                        last_err = Some(Error::Server {
+                            status: response.status().as_u16(),
+                            message: format!("HTTP status {} for thread read endpoint ({})", response.status(), ep),
+                        });
+                    }
+                }
+                Ok(Err(e)) => {
+                    last_err = Some(Error::SearchRequest(e));
+                }
+                Err(_) => {
+                    last_err = Some(Error::Timeout(self.timeout));
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| Error::Custom("Failed to fetch thread content via API".to_string())))
     }
 
     fn validate_request(&self, request: &SearchRequest) -> Result<()> {
