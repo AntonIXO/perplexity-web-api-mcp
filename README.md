@@ -94,7 +94,7 @@ This server requires a Perplexity AI account. You need to extract the session to
   **Note:** this timeout lives inside the Perplexity HTTP client only. If you're also being cut off by your *MCP client's own* tool-call timeout (a separate, client-side setting — see [Progress heartbeats](#progress-heartbeats-for-long-running-tools) below), raising this variable alone won't help; you also need to raise (or auto-extend via progress) the client's timeout.
 - `PERPLEXITY_PROGRESS_INTERVAL_SECS` (optional, default: `10`): How often (in seconds) to emit `notifications/progress` heartbeats during a tool call, when the caller's request included a `progressToken`. See [Progress heartbeats](#progress-heartbeats-for-long-running-tools) below.
 - `PERPLEXITY_INCOGNITO` (optional, default: `true`): Whether requests should use Perplexity's incognito mode.
-  Valid values: `true` or `false`
+  Valid values: `true` or `false`. Set it to `false` to let authenticated searches appear in the account's normal search history and browser UI. This cannot save searches when the session token is missing, expired, or rejected by Perplexity.
 
 ### Discovering Available Models
 
