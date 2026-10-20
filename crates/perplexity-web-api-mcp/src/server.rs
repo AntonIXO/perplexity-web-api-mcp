@@ -680,7 +680,10 @@ impl PerplexityServer {
         let _heartbeat = ProgressHeartbeat::start(&context, self.progress_interval);
 
         let response = self.client.read_thread(&uuid_or_slug).await.map_err(|e| {
-            McpError::internal_error(format!("Perplexity API error reading thread content: {}", e), None)
+            McpError::internal_error(
+                format!("Perplexity API error reading thread content: {}", e),
+                None,
+            )
         })?;
 
         to_json_tool_result(&PerplexityResponse {

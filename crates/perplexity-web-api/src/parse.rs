@@ -95,12 +95,10 @@ fn extract_from_blocks(
         {
             answer = Some(text.to_string());
         }
-        if let Some(results) =
-            block.get("web_result_block").and_then(|b| b.get("web_results"))
+        if let Some(results) = block.get("web_result_block").and_then(|b| b.get("web_results"))
+            && let Ok(parsed) = serde_json::from_value::<Vec<SearchWebResult>>(results.clone())
         {
-            if let Ok(parsed) = serde_json::from_value::<Vec<SearchWebResult>>(results.clone()) {
-                web_results = parsed;
-            }
+            web_results = parsed;
         }
     }
 
@@ -142,15 +140,23 @@ fn extract_string_array(content: &Map<String, Value>, key: &str) -> Vec<String> 
 
 /// Parses a direct thread REST API response JSON into a SearchResponse.
 pub fn parse_thread_response(json_val: &Value) -> Result<SearchResponse> {
-    let obj = json_val.as_object().ok_or_else(|| Error::Custom("Invalid JSON response".to_string()))?;
+    let obj = json_val
+        .as_object()
+        .ok_or_else(|| Error::Custom("Invalid JSON response".to_string()))?;
 
     let mut answer_parts = Vec::new();
     let mut web_results = Vec::new();
 
     // Check for messages / entries array
-    if let Some(entries) = obj.get("entries").or_else(|| obj.get("messages")).and_then(|v| v.as_array()) {
+    if let Some(entries) =
+        obj.get("entries").or_else(|| obj.get("messages")).and_then(|v| v.as_array())
+    {
         for (idx, entry) in entries.iter().enumerate() {
-            if let Some(query) = entry.get("query_str").or_else(|| entry.get("question")).and_then(|v| v.as_str()) {
+            if let Some(query) = entry
+                .get("query_str")
+                .or_else(|| entry.get("question"))
+                .and_then(|v| v.as_str())
+            {
                 answer_parts.push(format!("### Turn {}\n**User:** {}\n", idx + 1, query));
             }
             if let Some(ans) = entry.get("answer").and_then(|v| v.as_str()) {
@@ -172,19 +178,13 @@ pub fn parse_thread_response(json_val: &Value) -> Result<SearchResponse> {
 
     let attachments = extract_string_array(obj, "attachments");
 
-    let full_answer = if answer_parts.is_empty() {
-        None
-    } else {
-        Some(answer_parts.join("\n"))
-    };
+    let full_answer =
+        if answer_parts.is_empty() { None } else { Some(answer_parts.join("\n")) };
 
     Ok(SearchResponse {
         answer: full_answer,
         web_results,
-        follow_up: crate::types::FollowUpContext {
-            backend_uuid,
-            attachments,
-        },
+        follow_up: crate::types::FollowUpContext { backend_uuid, attachments },
         raw: json_val.clone(),
     })
 }
@@ -366,10 +366,7 @@ mod tests {
 
         let event = parse_sse_event(&json.to_string()).unwrap();
 
-        assert_eq!(
-            event.answer,
-            Some("The boiling point of water is 100".to_string())
-        );
+        assert_eq!(event.answer, Some("The boiling point of water is 100".to_string()));
         assert!(event.web_results.is_empty());
     }
 

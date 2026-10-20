@@ -1,7 +1,7 @@
 use crate::auth::{AuthCookies, CSRF_TOKEN_COOKIE_NAME};
 use crate::config::{
-    API_BASE_URL, API_MODE_CONCISE, API_MODE_COPILOT, API_REFERER, API_VERSION, ENDPOINT_AUTH_CSRF,
-    ENDPOINT_AUTH_SESSION, ENDPOINT_RATE_LIMITS, ENDPOINT_SSE_ASK,
+    API_BASE_URL, API_MODE_CONCISE, API_MODE_COPILOT, API_REFERER, API_VERSION,
+    ENDPOINT_AUTH_CSRF, ENDPOINT_AUTH_SESSION, ENDPOINT_RATE_LIMITS, ENDPOINT_SSE_ASK,
 };
 use crate::error::{Error, Result};
 use crate::parse::extract_thread_uuid_or_slug;
@@ -193,10 +193,7 @@ impl ClientBuilder {
                 // asking for one aborts startup for no gain.
                 if cookies.is_some() && account_id.is_none() {
                     let csrf_token = Self::fetch_csrf_token(&http, timeout).await?;
-                    jar.add_cookie_str(
-                        &cookie_str(CSRF_TOKEN_COOKIE_NAME, &csrf_token),
-                        &url,
-                    );
+                    jar.add_cookie_str(&cookie_str(CSRF_TOKEN_COOKIE_NAME, &csrf_token), &url);
                 }
 
                 http
@@ -222,7 +219,9 @@ impl ClientBuilder {
                 .filter_map(|v| v.to_str().ok())
                 .filter_map(|s| s.split('=').next().map(|n| n.to_owned()))
                 .collect();
-            eprintln!("[debug] warmup {ENDPOINT_AUTH_SESSION} -> {status}, set-cookie: {set_cookie:?}");
+            eprintln!(
+                "[debug] warmup {ENDPOINT_AUTH_SESSION} -> {status}, set-cookie: {set_cookie:?}"
+            );
         }
 
         Ok(Client { http, has_cookies, timeout, long_timeout, account_id })
@@ -329,7 +328,9 @@ impl Client {
         self.check_quota_for_mode(request.mode).await?;
 
         let file_refs: Vec<&UploadFile> = request.files.iter().collect();
-        let mut attachments = upload_files(&self.http, &file_refs, self.timeout, self.account_id.as_deref()).await?;
+        let mut attachments =
+            upload_files(&self.http, &file_refs, self.timeout, self.account_id.as_deref())
+                .await?;
 
         if let Some(ref follow_up) = request.follow_up {
             attachments.extend(follow_up.attachments.clone());
@@ -477,17 +478,21 @@ impl Client {
         let clean_uuid = extract_thread_uuid_or_slug(uuid_or_slug);
 
         let endpoints = vec![
-            format!("{}/rest/threads/by_slug_or_id/{}?version={}&source=default", API_BASE_URL, clean_uuid, API_VERSION),
+            format!(
+                "{}/rest/threads/by_slug_or_id/{}?version={}&source=default",
+                API_BASE_URL, clean_uuid, API_VERSION
+            ),
             format!("{}/rest/threads/{}?version={}", API_BASE_URL, clean_uuid, API_VERSION),
-            format!("{}/rest/tasks/by_slug_or_id/{}?version={}", API_BASE_URL, clean_uuid, API_VERSION),
+            format!(
+                "{}/rest/tasks/by_slug_or_id/{}?version={}",
+                API_BASE_URL, clean_uuid, API_VERSION
+            ),
         ];
 
         let mut last_err = None;
 
         for ep in endpoints {
-            let fut = self
-                .http
-                .get(&ep)
+            let fut = with_account(self.http.get(&ep), self.account_id.as_deref())
                 .header("Referer", API_REFERER)
                 .header("Accept", "application/json, text/plain, */*")
                 .header("x-perplexity-version", API_VERSION)
@@ -502,7 +507,11 @@ impl Client {
                     } else {
                         last_err = Some(Error::Server {
                             status: response.status().as_u16(),
-                            message: format!("HTTP status {} for thread read endpoint ({})", response.status(), ep),
+                            message: format!(
+                                "HTTP status {} for thread read endpoint ({})",
+                                response.status(),
+                                ep
+                            ),
                         });
                     }
                 }
@@ -515,7 +524,9 @@ impl Client {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| Error::Custom("Failed to fetch thread content via API".to_string())))
+        Err(last_err.unwrap_or_else(|| {
+            Error::Custom("Failed to fetch thread content via API".to_string())
+        }))
     }
 
     fn validate_request(&self, request: &SearchRequest) -> Result<()> {
@@ -529,5 +540,32 @@ impl Client {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{account_id_from_cookie_name, cookie_str};
+
+    #[test]
+    fn derives_account_id_from_current_cookie_name() {
+        assert_eq!(
+            account_id_from_cookie_name("__Secure-pplx.session.account-123"),
+            Some("account-123")
+        );
+        assert_eq!(account_id_from_cookie_name("__Secure-pplx.session."), None);
+        assert_eq!(account_id_from_cookie_name("__Secure-next-auth.session-token"), None);
+    }
+
+    #[test]
+    fn cookie_string_keeps_secure_prefix_valid() {
+        assert_eq!(
+            cookie_str("__Secure-pplx.session.account-123", "session-value"),
+            "__Secure-pplx.session.account-123=session-value; Domain=www.perplexity.ai; Path=/; Secure"
+        );
+        assert_eq!(
+            cookie_str("__Host-example", "session-value"),
+            "__Host-example=session-value; Path=/; Secure"
+        );
     }
 }

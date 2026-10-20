@@ -20,23 +20,23 @@ This repository is the [`AntonIXO` fork](https://github.com/AntonIXO/perplexity-
 
 ## No API Key Required
 
-This MCP server uses your Perplexity account session directly — **no API key needed**.
+This MCP server talks to Perplexity's web endpoints — **no API key needed**.
 
-Perplexity offers a separate [paid API](https://docs.perplexity.ai/guides/pricing) with per-request pricing that is charged independently from your Pro subscription. With this MCP, you don't need to pay for API access — your existing Perplexity subscription (or even a free account) is enough.
-
-Simply extract the session token from your browser cookies, and you're ready to use Perplexity search, research, and reasoning in your IDE.
+- Without a session token, `perplexity_search` and `perplexity_ask` work anonymously.
+- With a session token, the server can use your account's models, history, quotas, connectors, and file uploads.
 
 ## Tokenless Mode
 
-The server can run **without any authentication tokens**. In this mode:
+The server can run **without authentication**. In this mode:
 
-- Only `perplexity_search` (links only) and `perplexity_ask` (answer with sources) are available — `perplexity_research` and `perplexity_reason` require tokens.
-- Both tools use the `turbo` model; `PERPLEXITY_ASK_MODEL` and `PERPLEXITY_REASON_MODEL` cannot be set (the server will throw an error if they are).
-- File attachments (`files` parameter) are unavailable — they require tokens.
+- Only `perplexity_search` and `perplexity_ask` are available; account-only tools require a token.
+- Both tools use the `turbo` model; model overrides are rejected.
+- File attachments and connectors are unavailable.
+- `PERPLEXITY_INCOGNITO=false` still works: it creates an anonymous, non-incognito thread. It cannot appear in an account's signed-in history because there is no account session.
 
-To use tokenless mode, simply omit `PERPLEXITY_SESSION_TOKEN` from your configuration.
+To use tokenless mode, omit `PERPLEXITY_SESSION_TOKEN` from your configuration.
 
-For full access to all tools and model selection, provide your session token as described in the [Configuration](#configuration) section below.
+For full access to all tools and model selection, provide a session token as described in the [Configuration](#configuration) section below.
 
 ## Requirements
 
@@ -70,18 +70,25 @@ Platform archives and checksums are available on the [GitHub Releases page](http
 
 ## Configuration
 
-### Getting Your Token
+### Getting Your Session Cookie
 
-This server requires a Perplexity AI account. You need to extract the session token from your browser cookies:
+A token is optional for anonymous search. To enable authenticated tools, extract the session cookie from your browser:
 
-1. Log in to [perplexity.ai](https://www.perplexity.ai) in your browser
-2. Open Developer Tools (F12 or right-click → Inspect)
-3. Go to Application → Cookies → `https://www.perplexity.ai`
-4. Copy the value of `__Secure-next-auth.session-token` → use as `PERPLEXITY_SESSION_TOKEN`
+1. Log in to [perplexity.ai](https://www.perplexity.ai) in your browser.
+2. Open Developer Tools (F12 or right-click → Inspect).
+3. Go to Application → Cookies → `https://www.perplexity.ai`.
+4. For current accounts, find the cookie whose name starts with `__Secure-pplx.session.`. Copy its full **name** and **value**.
+5. Set the cookie value as `PERPLEXITY_SESSION_TOKEN` and the full name as `PERPLEXITY_SESSION_COOKIE_NAME`.
+
+The suffix after `__Secure-pplx.session.` is the account UUID. The server derives the required `x-pplx-account` header from it automatically.
 
 ### Environment Variables
 
-- `PERPLEXITY_SESSION_TOKEN` (optional): Perplexity session token (`__Secure-next-auth.session-token` cookie). Required for `perplexity_research`, `perplexity_reason`, `perplexity_computer`, `perplexity_view_chat`, connectors, and file attachments. The CSRF token is fetched automatically — no `PERPLEXITY_CSRF_TOKEN` needed.
+- `PERPLEXITY_SESSION_TOKEN` (optional): Value of the Perplexity session cookie. Required for account-only tools, model selection, connectors, and file attachments. Omit it for tokenless mode.
+- `PERPLEXITY_SESSION_COOKIE_NAME` (optional): Full cookie name, normally `__Secure-pplx.session.<account-uuid>`. The account UUID is derived from this name and sent as `x-pplx-account`. If unset, the legacy `__Secure-next-auth.session-token` cookie name is used.
+- `PERPLEXITY_ACCOUNT_ID` (optional): Explicitly overrides the account UUID derived from `PERPLEXITY_SESSION_COOKIE_NAME`.
+- `PERPLEXITY_NO_ACCOUNT_HEADER` (optional): Set to any value to suppress `x-pplx-account` for debugging legacy sessions.
+- `PERPLEXITY_DEBUG_COOKIES` (optional): Set to `1` to print cookie names and authentication warm-up status to stderr. Never share this output unredacted.
 - `PERPLEXITY_ASK_MODEL` (optional, requires token): Model for `perplexity_ask`.
   Valid values: `turbo`, `pro-auto` (default), `pro-upgraded`, `sonar`, `nemotron-3-super`, `claude-4.6-sonnet`, `claude-4.6-opus`, `gemini-3.0-flash`, `gemini-3.0-pro`, `gpt-5-pro`, `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.2`, `gpt-5.2-pro`, `grok-4.1`.
 - `PERPLEXITY_REASON_MODEL` (optional, requires token): Model for `perplexity_reason`.
@@ -93,8 +100,22 @@ This server requires a Perplexity AI account. You need to extract the session to
 - `PERPLEXITY_LONG_TIMEOUT_SECS` (optional, default: `600`): Request timeout in seconds for long-running modes — **Deep Research**, Computer, and Document Review. Raise this if deep-research runs are being cut off.
   **Note:** this timeout lives inside the Perplexity HTTP client only. If you're also being cut off by your *MCP client's own* tool-call timeout (a separate, client-side setting — see [Progress heartbeats](#progress-heartbeats-for-long-running-tools) below), raising this variable alone won't help; you also need to raise (or auto-extend via progress) the client's timeout.
 - `PERPLEXITY_PROGRESS_INTERVAL_SECS` (optional, default: `10`): How often (in seconds) to emit `notifications/progress` heartbeats during a tool call, when the caller's request included a `progressToken`. See [Progress heartbeats](#progress-heartbeats-for-long-running-tools) below.
-- `PERPLEXITY_INCOGNITO` (optional, default: `true`): Whether requests should use Perplexity's incognito mode.
-  Valid values: `true` or `false`. Set it to `false` to let authenticated searches appear in the account's normal search history and browser UI. This cannot save searches when the session token is missing, expired, or rejected by Perplexity.
+- `PERPLEXITY_INCOGNITO` (optional, default: `true`): Whether requests use Perplexity's incognito mode.
+  Valid values: `true` or `false`. Set it to `false` for normal saved history when authenticated, or for an anonymous non-incognito thread when no token is supplied. Anonymous threads are not attached to an account history.
+
+### Diagnosing a Session
+
+Perplexity recently moved from one shared NextAuth cookie to per-account cookies. If the cookie name is wrong or `x-pplx-account` is missing, the API usually returns HTTP 200 but treats the request as anonymous, which looks like empty answers or zero quotas. The current client sends the account header on warm-up, searches, quota checks, thread reads, and authenticated upload requests.
+
+Check the session without making a search:
+
+```bash
+PERPLEXITY_SESSION_TOKEN='...' \
+PERPLEXITY_SESSION_COOKIE_NAME='__Secure-pplx.session.<account-uuid>' \
+perplexity-web-api-mcp --check
+```
+
+`--check` prints `ok remaining_pro=<n>` for an authenticated session, `anonymous remaining_pro=0` for a silent anonymous downgrade, or `error ...` for a transport failure. The legacy cookie path remains available when `PERPLEXITY_SESSION_COOKIE_NAME` is omitted.
 
 ### Discovering Available Models
 
@@ -129,7 +150,10 @@ This server implements the server side of that contract:
 ### Claude Code
 
 ```bash
-claude mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" -- npx -y @antonlx/perplexity-web-api-mcp
+claude mcp add perplexity \
+  --env PERPLEXITY_SESSION_TOKEN="your-session-token" \
+  --env PERPLEXITY_SESSION_COOKIE_NAME="__Secure-pplx.session.your-account-uuid" \
+  -- npx -y @antonlx/perplexity-web-api-mcp
 ```
 
 ### Cursor, Claude Desktop & Windsurf
@@ -151,7 +175,8 @@ For manual setup, all these clients use the same `mcpServers` format:
       "command": "npx",
       "args": ["-y", "@antonlx/perplexity-web-api-mcp"],
       "env": {
-        "PERPLEXITY_SESSION_TOKEN": "your-session-token"
+        "PERPLEXITY_SESSION_TOKEN": "your-session-token",
+        "PERPLEXITY_SESSION_COOKIE_NAME": "__Secure-pplx.session.your-account-uuid"
       }
     }
   }
@@ -169,7 +194,8 @@ Add following following to `context_servers` in your [settings file](https://zed
       "command": "npx",
       "args": ["-y", "@antonlx/perplexity-web-api-mcp"],
       "env": {
-        "PERPLEXITY_SESSION_TOKEN": "your-session-token"
+        "PERPLEXITY_SESSION_TOKEN": "your-session-token",
+        "PERPLEXITY_SESSION_COOKIE_NAME": "__Secure-pplx.session.your-account-uuid"
       }
     }
   }
@@ -188,7 +214,8 @@ I recommend using the one-click install badge at the top of this README for VS C
       "command": "npx",
       "args": ["-y", "@antonlx/perplexity-web-api-mcp"],
       "env": {
-        "PERPLEXITY_SESSION_TOKEN": "your-session-token"
+        "PERPLEXITY_SESSION_TOKEN": "your-session-token",
+        "PERPLEXITY_SESSION_COOKIE_NAME": "__Secure-pplx.session.your-account-uuid"
       }
     }
   }
@@ -198,7 +225,10 @@ I recommend using the one-click install badge at the top of this README for VS C
 ### Codex
 
 ```bash
-codex mcp add perplexity --env PERPLEXITY_SESSION_TOKEN="your-session-token" -- npx -y @antonlx/perplexity-web-api-mcp
+codex mcp add perplexity \
+  --env PERPLEXITY_SESSION_TOKEN="your-session-token" \
+  --env PERPLEXITY_SESSION_COOKIE_NAME="__Secure-pplx.session.your-account-uuid" \
+  -- npx -y @antonlx/perplexity-web-api-mcp
 ```
 
 ### Building from Source
@@ -219,6 +249,7 @@ docker build -t perplexity-web-api-mcp .
 docker run -d \
   -p 8080:8080 \
   -e PERPLEXITY_SESSION_TOKEN="your-session-token" \
+  -e PERPLEXITY_SESSION_COOKIE_NAME="__Secure-pplx.session.your-account-uuid" \
   perplexity-web-api-mcp
 ```
 
@@ -303,7 +334,7 @@ Loads the context of an existing Perplexity search/chat and asks Perplexity to e
 - `url_or_id` (required): Full `perplexity.ai/search/...` URL, thread UUID, or thread slug
 - `query` (optional): A specific question about the thread. By default, returns a detailed question-by-question breakdown
 
-Requires `PERPLEXITY_SESSION_TOKEN`. Internally this uses Perplexity's follow-up mechanism, so the inspection query may appear as a new turn in the referenced thread.
+Requires `PERPLEXITY_SESSION_TOKEN` and, for current accounts, `PERPLEXITY_SESSION_COOKIE_NAME`. This reads the existing thread directly; it does not add a follow-up turn.
 
 ## File Attachments
 

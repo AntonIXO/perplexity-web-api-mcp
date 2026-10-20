@@ -182,20 +182,20 @@ async fn wait_for_processing(
         http.post(format!("{API_BASE_URL}{ENDPOINT_ATTACHMENT_PROCESSING}")),
         account_id,
     )
-        .header("Accept", "text/event-stream")
-        .header(ORIGIN, PERPLEXITY_ORIGIN)
-        .header(REFERER, PERPLEXITY_REFERER)
-        .header("sec-fetch-dest", "empty")
-        .header("sec-fetch-mode", "cors")
-        .header("sec-fetch-site", "same-origin")
-        .header(
-            "x-perplexity-request-endpoint",
-            format!("{API_BASE_URL}{ENDPOINT_ATTACHMENT_PROCESSING}"),
-        )
-        .header("x-perplexity-request-reason", "ask-input-inner-home")
-        .header("x-perplexity-request-try-number", "1")
-        .json(&body)
-        .send();
+    .header("Accept", "text/event-stream")
+    .header(ORIGIN, PERPLEXITY_ORIGIN)
+    .header(REFERER, PERPLEXITY_REFERER)
+    .header("sec-fetch-dest", "empty")
+    .header("sec-fetch-mode", "cors")
+    .header("sec-fetch-site", "same-origin")
+    .header(
+        "x-perplexity-request-endpoint",
+        format!("{API_BASE_URL}{ENDPOINT_ATTACHMENT_PROCESSING}"),
+    )
+    .header("x-perplexity-request-reason", "ask-input-inner-home")
+    .header("x-perplexity-request-try-number", "1")
+    .json(&body)
+    .send();
 
     let resp = tokio::time::timeout(timeout, sse_fut)
         .await

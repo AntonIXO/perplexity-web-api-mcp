@@ -183,6 +183,7 @@ Examples require authentication tokens. Set environment variables:
 
 ```bash
 export PERPLEXITY_SESSION_TOKEN="your-session-token"
+export PERPLEXITY_SESSION_COOKIE_NAME="__Secure-pplx.session.your-account-uuid"
 ```
 
 Then run:

@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0](https://github.com/AntonIXO/perplexity-web-api-mcp/compare/v0.12.3..v0.13.0) - 2026-10-20
+
+### 🐛 Bug Fixes
+
+- Authenticate against Perplexity's per-account session scheme: send `x-pplx-account` derived from `__Secure-pplx.session.<account-uuid>` on every Perplexity API request.
+- Skip the obsolete NextAuth CSRF fetch for current per-account sessions.
+- Preserve anonymous tokenless searches with both `PERPLEXITY_INCOGNITO=true` and `false`.
+- Send the account header when reading private threads and uploading authenticated attachments.
+
+### 🚀 Features
+
+- Add `PERPLEXITY_SESSION_COOKIE_NAME`, `PERPLEXITY_ACCOUNT_ID`, `PERPLEXITY_NO_ACCOUNT_HEADER`, and `PERPLEXITY_DEBUG_COOKIES` configuration.
+- Add `--check` session/quota diagnostic mode.
+- Publish the release as `@antonlx/perplexity-web-api-mcp`.
+
 ## [0.12.3](https://github.com/AntonIXO/perplexity-web-api-mcp/compare/v0.12.2..v0.12.3) - 2026-08-17
 
 ### 🚀 Features

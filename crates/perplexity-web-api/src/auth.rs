@@ -62,4 +62,13 @@ mod tests {
         );
         assert_eq!(SESSION_TOKEN_COOKIE_NAME, "__Secure-next-auth.session-token");
     }
+
+    #[test]
+    fn accepts_current_per_account_cookie_name() {
+        let cookies = AuthCookies::new("test-session-token")
+            .with_cookie_name("__Secure-pplx.session.account-123");
+
+        assert_eq!(cookies.session_cookie_name(), "__Secure-pplx.session.account-123");
+        assert_eq!(cookies.session_token(), "test-session-token");
+    }
 }

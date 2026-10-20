@@ -43,8 +43,6 @@ fn assert_response_has_answer(response: &SearchResponse, context: &str) {
 #[tokio::test]
 #[ignore]
 async fn perplexity_search_without_authorization_returns_answer() {
-    ensure_required_env_vars();
-
     let client = Client::builder()
         .timeout(SEARCH_TIMEOUT)
         .build()
@@ -57,6 +55,23 @@ async fn perplexity_search_without_authorization_returns_answer() {
         .expect("perplexity_search without authorization request failed");
 
     assert_response_has_answer(&response, "perplexity_search without authorization");
+}
+
+#[tokio::test]
+#[ignore]
+async fn perplexity_search_without_authorization_with_incognito_disabled_returns_answer() {
+    let client = Client::builder()
+        .timeout(SEARCH_TIMEOUT)
+        .build()
+        .await
+        .expect("Failed to build unauthenticated client for non-incognito search test");
+
+    let response = client
+        .search(SearchRequest::new(SEARCH_QUERY).mode(SearchMode::Auto).incognito(false))
+        .await
+        .expect("non-incognito anonymous search request failed");
+
+    assert_response_has_answer(&response, "non-incognito anonymous search");
 }
 
 #[tokio::test]
